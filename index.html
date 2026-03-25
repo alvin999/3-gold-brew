@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>模擬手沖咖啡 - Barista's Challenge</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+TC:wght@400;700&family=Silkscreen&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <div class="game-container">
+        <!-- 渲染容器 -->
+        <div id="three-container" class="hidden"></div>
+        <div id="pixi-container" class="hidden"></div>
+        
+        <!-- HUD: 遊戲中的簡約資訊與控制 -->
+        <div id="game-hud" class="hud hidden">
+          <div class="status-panel glass">
+            <h1 class="game-title">3 Gold Brew</h1>
+            <div class="controls">
+              <button id="toggle-engine-btn" type="button" class="ctrl-btn">SWITCH TO PIXI</button>
+              <button id="reset-btn" type="button" class="ctrl-btn">RESTART</button>
+              <button id="clear-cache-btn" type="button" class="ctrl-btn danger">CLEAR CACHE</button>
+            </div>
+          </div>
+        </div>
+
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

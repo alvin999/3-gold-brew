@@ -1,0 +1,350 @@
+:root {
+  --primary-color: #f39c12;
+  --bg-overlay: rgba(0, 0, 0, 0.4);
+  --glass-bg: rgba(255, 255, 255, 0.15);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --anime-font: 'Noto Sans TC', 'Inter', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--anime-font);
+  background-color: #fbf1c7; /* 與 3D 背景一致 */
+  color: #282828;
+}
+
+#app {
+  width: 100vw;
+  height: 100vh;
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+#three-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* 舊有的背景光效與粒子已移除 */
+
+/* 呼吸植物 */
+.plant-container {
+  position: absolute;
+  bottom: 5%;
+  right: 5%;
+  width: 250px;
+  height: 300px;
+  z-index: 5;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  transform-origin: bottom center;
+  animation: breathing-plant 4s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes breathing-plant {
+  0%, 100% { transform: scale(1) skewX(0); }
+  50% { transform: scale(1.05) skewX(2deg); }
+}
+
+/* 沖煮區域 */
+.brewing-area {
+  display: flex !important;
+  opacity: 0; /* 視覺上隱藏，但保留 DOM 存在以便邏輯運行 */
+  pointer-events: none;
+  position: absolute;
+  bottom: 10%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  z-index: 10;
+}
+
+.cup-slot {
+  position: relative;
+  width: 350px; /* 加大 */
+  height: 450px; /* 加大 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 20px;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.cup-slot.active {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 15px rgba(243, 156, 18, 0.5));
+}
+
+.dripper-container {
+  width: 300px;
+  height: 350px;
+  /* 準備移除 2D 背景，改為 3D 渲染 */
+  background: none; 
+  filter: drop-shadow(0 10px 10px rgba(0,0,0,0.3));
+}
+
+.progress-info {
+  background: var(--glass-bg);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--glass-border);
+  padding: 10px;
+  border-radius: 12px;
+  margin-top: 10px;
+  text-align: center;
+  min-width: 120px;
+}
+
+.timer {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.weight {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.indicator {
+  position: absolute;
+  top: -20px;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 15px solid var(--primary-color);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.cup-slot.hint .indicator {
+  opacity: 1;
+  animation: bounce 0.6s infinite alternate;
+}
+
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-10px); }
+}
+
+/* 手沖壺與水流已移至 3D 場景 */
+
+/* HUD & UI */
+.hud {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 50;
+}
+
+#overlay {
+  background: transparent !important;
+  pointer-events: none; /* 預設不擋，但 Modal 需要擋 */
+}
+
+.settings-modal {
+  pointer-events: auto; /* Modal 區域恢復交互 */
+  background: rgba(251, 241, 199, 0.95);
+  border: 4px solid #3c3836;
+  color: #3c3836; /* 修正：原本可能是白色，與淺背景對比不足 */
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+}
+
+#start-btn, .primary-btn {
+  pointer-events: auto;
+}
+
+.status-panel {
+  padding: 15px 25px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+}
+
+.ctrl-btn {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--glass-border);
+  color: white;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.ctrl-btn:hover {
+  background: var(--primary-color);
+}
+
+.game-title {
+  font-size: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--primary-color);
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.global-timer {
+  font-size: 2rem;
+  font-weight: bold;
+  display: none; /* 已移至 3D 空間 */
+}
+
+/* Overlay & Modals */
+.overlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+
+.overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.result-modal {
+  padding: 40px;
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  background: rgba(251, 241, 199, 0.9);
+  border-radius: 24px;
+  border: 4px solid #3c3836;
+}
+
+.setting-group {
+  margin: 20px 0;
+  font-size: 1.1rem;
+}
+
+input, select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #3c3836;
+  background: rgba(255,255,255,0.5);
+  color: #282828;
+  margin-left: 10px;
+  font-family: inherit;
+  font-weight: bold;
+}
+
+.btn-start {
+  display: none !important; /* 已由 3D 開始按鈕取代 */
+}
+.primary-btn {
+  margin-top: 30px;
+  padding: 15px 40px;
+  font-size: 1.2rem;
+  background: var(--primary-color);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.primary-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px var(--primary-color);
+}
+
+/* 模型切換器與容器 */
+#three-container, #zdog-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+#zdog-container {
+  z-index: 2; /* 預設放在 three 之上，透過 hidden 切換 */
+  background: #fbf1c7;
+}
+
+#zdog-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.engine-switcher {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 12px 20px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  background: rgba(40, 40, 40, 0.8);
+  backdrop-filter: blur(8px);
+}
+
+.switcher-label {
+  font-family: 'Silkscreen', cursive;
+  font-size: 0.75rem;
+  color: var(--primary-color);
+  letter-spacing: 2px;
+}
+
+#engine-select {
+  background: rgba(0, 0, 0, 0.3);
+  color: #fff;
+  border: 1px solid var(--primary-color);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+#engine-select:hover {
+  background: rgba(0, 0, 0, 0.5);
+  border-color: #fff;
+}
