@@ -1,5 +1,5 @@
 import './style.css'
-import { ThreeScene } from './three-scene'
+import { ThreeScene } from './scene/ThreeScene';
 import { PixiScene } from './pixi-scene'
 
 const AppState = {
@@ -10,91 +10,110 @@ const AppState = {
 
 type AppState = typeof AppState[keyof typeof AppState];
 
-interface PourStage {
-  targetWeight: number;
-  timeLimit: number;
-}
+// 移除未使用的 PourStage 引用
 
 class Cup {
-  id: string;
-  index: number;
-  currentWeight: number = 0;
-  targetTotalWeight: number;
-  bloomTime: number;
-  startTime: number | null = null;
-  isFinished: boolean = false;
-  stages: PourStage[] = [];
-  currentStageIndex: number = 0;
+  public name: string;
+  public index: number;
+  public currentWeight: number = 0;
+  public targetTotalWeight: number;
+  public stages: any[] = [];
+  public currentStageIndex: number = 0;
+  public startTime: number | null = null;
+  public delayStart: number = 0; 
+  public isFinished: boolean = false;
+  public isFreeMode: boolean = false;
+  private manualStartTime: number | null = null;
 
-  constructor(id: string, index: number, totalWeight: number, bloomTime: number, stageCount: number) {
-    this.id = id;
+  public displayIndex: number; // 使用者看到的杯號 (1-based)
+
+  constructor(name: string, index: number, targetTotalWeight: number, stages: any[], delayStart: number, displayIndex: number = 0) {
+    this.name = name;
     this.index = index;
-    this.targetTotalWeight = totalWeight;
-    this.bloomTime = bloomTime;
-    
-    // 初始化段落
-    const weightPerStage = (totalWeight - 30) / (stageCount - 1);
-    this.stages.push({ targetWeight: 30, timeLimit: bloomTime });
-    for (let i = 1; i < stageCount; i++) {
-      this.stages.push({ 
-        targetWeight: 30 + (weightPerStage * i), 
-        timeLimit: bloomTime + (i * 45)
-      });
-    }
+    this.targetTotalWeight = targetTotalWeight;
+    this.stages = stages;
+    this.delayStart = delayStart;
+    this.displayIndex = displayIndex;
   }
 
   start() {
-    this.startTime = Date.now();
   }
 
-  update(currentTime: number) {
-    if (!this.startTime || this.isFinished) return;
+  update(currentTime: number, gameStartTime: number) {
+    if (this.isFinished) return;
     
-    const elapsed = Math.floor((currentTime - this.startTime) / 1000);
-    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
-    const s = (elapsed % 60).toString().padStart(2, '0');
+    if (this.isFreeMode) {
+      if (!this.manualStartTime) {
+        game.threeScene.updateScale(this.index, this.currentWeight, "00:00");
+        return;
+      }
+      const localElapsed = Math.floor((currentTime - this.manualStartTime) / 1000);
+      const m = Math.floor(localElapsed / 60).toString().padStart(2, '0');
+      const s = (localElapsed % 60).toString().padStart(2, '0');
+      const timeStr = `${m}:${s}`;
+      game.threeScene.updateScale(this.index, this.currentWeight, timeStr);
+      return;
+    }
+
+    const elapsedTotal = gameStartTime === 0 ? 0 : Math.floor((currentTime - gameStartTime) / 1000);
+    const localElapsed = Math.max(0, elapsedTotal - this.delayStart);
+    
+    const m = Math.floor(localElapsed / 60).toString().padStart(2, '0');
+    const s = (localElapsed % 60).toString().padStart(2, '0');
     const timeStr = `${m}:${s}`;
 
-    const nextStage = this.stages[this.currentStageIndex];
-    let instruction = "請稍候...";
+    let instruction = "準備中";
     let subText = `計時 ${timeStr}`;
     let isHint = false;
 
-    if (nextStage) {
-      const remainingWeight = Math.max(0, nextStage.targetWeight - this.currentWeight);
-      if (this.currentStageIndex === 0) {
-        instruction = "浸潤中: 30g";
-        subText = elapsed < this.bloomTime ? `剩餘 ${this.bloomTime - elapsed}s` : "準備下一段";
-      } else {
-        instruction = `注入至 ${Math.floor(nextStage.targetWeight)}g`;
-        subText = `剩餘 ${Math.floor(remainingWeight)}g`;
-      }
-      isHint = !!(elapsed >= nextStage.timeLimit - 5 && this.currentWeight < nextStage.targetWeight);
+    if (elapsedTotal < this.delayStart) {
+      instruction = "準備中...";
+      subText = `預計 ${this.delayStart}s 開始`;
     } else {
-      instruction = "沖煮完成";
-      subText = "享用咖啡";
+      if (!this.startTime) this.startTime = currentTime;
+      
+      const nextStage = this.stages[this.currentStageIndex];
+
+      if (nextStage) {
+        const remainingWeight = Math.max(0, nextStage.targetWeight - this.currentWeight);
+        const stageStartTime = nextStage.timeLimit; 
+        
+        instruction = `${nextStage.label}: ${Math.floor(nextStage.targetWeight)}g`;
+        
+        if (elapsedTotal < stageStartTime) {
+          instruction = `等待中 (${nextStage.label})`;
+          subText = `剩餘 ${stageStartTime - elapsedTotal}s`;
+        } else {
+          subText = `剩餘 ${Math.floor(remainingWeight)}g`;
+          isHint = remainingWeight > 0.5;
+        }
+      } else {
+        instruction = "沖煮完成";
+        subText = "享用咖啡";
+        if (this.currentWeight >= this.targetTotalWeight - 1) {
+          this.isFinished = true;
+        }
+      }
     }
     
-    // 更新渲染場景
-    const game = (window as any).game;
-    const scene = game.activeScene;
-    scene.updateScale(this.index, this.currentWeight);
-    scene.updateInstruction(this.index, instruction, subText, isHint);
-
-    if (this.currentWeight >= this.targetTotalWeight - 1) {
-      this.isFinished = true;
-    }
+    game.threeScene.updateScale(this.index, this.currentWeight, timeStr);
+    game.threeScene.updateInstruction(this.index, instruction, subText, isHint);
   }
 
   pour(amount: number) {
     if (this.isFinished) return;
+    
+    if (this.isFreeMode && !this.manualStartTime) {
+      this.manualStartTime = Date.now();
+    }
+    
     this.currentWeight += amount;
     if (this.currentWeight > this.targetTotalWeight) {
       this.currentWeight = this.targetTotalWeight;
     }
 
     const nextStage = this.stages[this.currentStageIndex];
-    if (nextStage && this.currentWeight >= nextStage.targetWeight) {
+    if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.1) {
       this.currentStageIndex++;
     }
   }
@@ -110,17 +129,19 @@ class Game {
   threeScene: ThreeScene;
   pixiScene: PixiScene;
   
-  activeRenderer: 'three' | 'pixi' = 'three'; // 預設使用 Three.js 以便觀察調試工具
-  public pourSpeed: number = 0.5; // 由 Leva 控制
+  activeRenderer: 'three' = 'three'; 
+  public pourSpeed: number = 0.5;
 
 
   mouseX: number = 0;
   mouseY: number = 0;
 
+  brewStartOverlay: HTMLElement | null = null;
+  brewStartBtn: HTMLElement | null = null;
+
   constructor() {
     this.threeScene = new ThreeScene('three-container');
     this.pixiScene = new PixiScene('pixi-container');
-    
     this.init();
   }
 
@@ -128,61 +149,56 @@ class Game {
     await this.pixiScene.init();
     this.setupListeners();
     this.showMenu();
-    requestAnimationFrame(() => this.update());
-  }
-
-  get activeScene() {
-    return this.activeRenderer === 'three' ? this.threeScene : this.pixiScene;
+    this.animate();
   }
 
   setupListeners() {
-    const resetBtn = document.getElementById('reset-btn');
-    if (resetBtn) resetBtn.addEventListener('click', () => {
-      // 純粹重新載入遊戲，不碰快取
+    const homeBtn = document.getElementById('home-btn');
+    if (homeBtn) homeBtn.addEventListener('click', () => {
       window.location.reload();
+    });
+
+    const restartBtn = document.getElementById('restart-btn');
+    if (restartBtn) restartBtn.addEventListener('click', () => {
+      this.restartGame();
     });
 
     const clearBtn = document.getElementById('clear-cache-btn');
     if (clearBtn) clearBtn.addEventListener('click', () => {
-      if (confirm("確定要清除所有 Theater.js 與 Leva 的調試快取嗎？（會重新載入頁面）")) {
+      if (confirm("確定要清除所有 Tweakpane 與遊戲本地快取嗎？（會重新載入頁面）")) {
         localStorage.clear();
         window.location.reload();
       }
     });
-    
-    const toggleBtn = document.getElementById('toggle-engine-btn');
-    if (toggleBtn) {
 
-    toggleBtn.innerText = this.activeRenderer === 'three' ? 'SWITCH TO PIXI' : 'SWITCH TO THREE';
-    
-    toggleBtn.addEventListener('click', () => {
-      this.activeRenderer = this.activeRenderer === 'three' ? 'pixi' : 'three';
-      toggleBtn.textContent = this.activeRenderer === 'three' ? 'SWITCH TO PIXI' : 'SWITCH TO THREE';
-      
-      // 僅在遊戲進行中才切換場景容器；選單狀態下固定顯示 Pixi
-      if (this.state === AppState.PLAYING) {
-        if (this.activeRenderer === 'three') {
-          this.threeScene.show();
-          this.pixiScene.hide();
-        } else {
-          this.threeScene.hide();
-          this.pixiScene.show();
-          this.pixiScene.startGame();
+    const canvas = this.threeScene.getRendererCanvas();
+    if (canvas) {
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.button === 0) {
+          if (this.state === AppState.PLAYING) {
+            // 計算模式下，若尚未點擊 START 開始計時則禁止注水
+            const p = this.threeScene.guiParams?.calculator;
+            if (p && p.mode === '計算模式' && this.gameStartTime === 0) {
+              return;
+            }
+            this.isPouring = true;
+            e.preventDefault();
+          }
         }
-      }
-    });
+      });
 
+      canvas.addEventListener('pointerup', () => {
+        this.isPouring = false;
+      });
     }
 
-    window.addEventListener('mousedown', () => {
-
-      if (this.state !== AppState.PLAYING) return;
-      this.isPouring = true;
-    });
-
-    window.addEventListener('mouseup', () => {
-      this.isPouring = false;
-    });
+    const toggleCalcBtn = document.getElementById('toggle-calc-btn');
+    if (toggleCalcBtn) {
+      toggleCalcBtn.addEventListener('click', () => {
+        const visible = this.pixiScene.toggleCalculator();
+        toggleCalcBtn.classList.toggle('active', visible);
+      });
+    }
 
     window.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX;
@@ -195,61 +211,169 @@ class Game {
       if (e.key.toLowerCase() === 's') this.activeCupIndex = 1;
       if (e.key.toLowerCase() === 'd') this.activeCupIndex = 2;
     });
+
+    const viewBtns = document.querySelectorAll('.view-btn');
+    viewBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const view = (btn as HTMLElement).dataset.view;
+        const isFree = btn.id === 'free-view-btn';
+        viewBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (this.threeScene.guiParams) {
+          if (isFree) {
+            this.threeScene.guiParams.camera.mode = 'Free';
+            this.threeScene.updateCamera(this.threeScene.guiParams.camera);
+          } else if (view) {
+            this.threeScene.applyCameraPreset(view);
+          }
+        }
+      });
+    });
+
+    this.brewStartOverlay = document.getElementById('brew-start-overlay');
+    this.brewStartBtn = document.getElementById('brew-start-btn');
+    if (this.brewStartBtn) {
+      this.brewStartBtn.addEventListener('click', () => {
+        this.startSimulation();
+      });
+    }
   }
 
+  restartGame() {
+    console.log("Game: restartGame() called - Resetting session in-place");
+    this.gameStartTime = 0;
+    this.isPouring = false;
+    
+    // 重新套用配方，這會重設所有杯子的狀態
+    this.applyCalculatorRecipe();
+    
+    // 重新進入準備啟動狀態
+    const p = this.threeScene.guiParams?.calculator;
+    if (p && p.mode === '計算模式') {
+      if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
+    } else {
+      this.startSimulation();
+    }
+    
+    this.threeScene.update3DUI("00:00", "0.0g", "準備開始");
+  }
   showMenu() {
     this.state = AppState.MENU;
-    // 重置容器：選單固定使用 Pixi
     document.getElementById('pixi-container')!.classList.remove('hidden');
-    document.getElementById('three-container')!.classList.add('hidden');
-    document.getElementById('game-hud')!.classList.add('hidden');
-    
+    document.getElementById('three-container')!.classList.remove('hidden'); 
+    document.getElementById('game-hud')!.classList.add('hidden'); 
+    document.getElementById('view-selector')!.classList.add('hidden');
     this.pixiScene.showMenu();
+    if (this.brewStartOverlay) this.brewStartOverlay.classList.add('hidden');
+    this.threeScene.applyCameraPreset('廣角全景'); 
   }
 
   startGame() {
-    console.log("Game: startGame called");
+    console.log("Game: startGame() called - Transitioning to PLAYING (Scene Ready)");
     this.state = AppState.PLAYING;
-    this.gameStartTime = Date.now();
+    this.gameStartTime = 0; 
     
-    // 顯示 HUD
     document.getElementById('game-hud')!.classList.remove('hidden');
+    document.getElementById('view-selector')!.classList.remove('hidden');
+    document.getElementById('pixi-container')!.classList.remove('hidden');
+    document.getElementById('three-container')!.classList.remove('hidden'); 
+
+    this.threeScene.show();
+    this.threeScene.startGame(); // 切換背景與相機
+    this.pixiScene.startGame(); // 隱藏 2D 入口
     
-    // 根據 activeRenderer 切換遊戲容器
-    if (this.activeRenderer === 'three') {
-      this.threeScene.show();
-      this.pixiScene.hide();
-      this.threeScene.startGame();
+    this.threeScene.applyCameraPreset('職人視角');
+    this.applyCalculatorRecipe();
+
+    // 只有在計算模式才顯示開始按鈕
+    const p = this.threeScene.guiParams?.calculator;
+    if (p && p.mode === '計算模式') {
+      if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
     } else {
-      this.threeScene.hide();
-      this.pixiScene.show();
-      this.pixiScene.startGame();
+      // 自由模式直接開始計時
+      this.startSimulation();
     }
-    console.log("Game: Renderer and Game state initialized");
-
-
-    
-    // 初始化遊戲數值 (預設值)
-    const total = 225;
-    const bloom = 30;
-    const stages = 3;
-    
-    this.cups = [
-      new Cup('cup-1', 0, total, bloom, stages),
-      new Cup('cup-2', 1, total, bloom, stages),
-      new Cup('cup-3', 2, total, bloom, stages)
-    ];
-
-    this.gameStartTime = Date.now();
-    this.cups.forEach(c => c.start());
-    
-    // 顯示 3D 內原本的門面 (指令牌與電子秤)
-    console.log("Game: Initializing 3D UI Visibility");
-    this.threeScene.setUIVisibility(true);
-    this.pixiScene.setUIVisibility(true);
-    console.log("Game: StartGame finished");
   }
 
+  startSimulation() {
+    if (this.state !== AppState.PLAYING || this.gameStartTime > 0) return;
+    
+    console.log("Game: startSimulation() called - Timer STARTED");
+    this.gameStartTime = Date.now();
+    
+    if (this.brewStartOverlay) {
+       this.brewStartOverlay.classList.add('hidden');
+    }
+    
+    // 這裡可以播放啟動音效或是開始引導
+    this.threeScene.updateInstruction(1, "START!", "開始沖煮", true);
+  }
+
+  applyCalculatorRecipe() {
+    // 移除自動開始計時，真正的啟動交給 3D 按鈕
+    const p = this.threeScene.guiParams.calculator;
+    if (!p) return;
+
+    this.threeScene.setDripperCount(p.cupCount || 3);
+
+    if (p.mode === '自由模式') {
+      this.threeScene.setDripperCount(p.cupCount || 3, true); // 自由模式根據已選杯數顯示，但隱藏看板
+      this.cups = [];
+      for (let i = 0; i < 3; i++) {
+        const c = new Cup(`free-cup-${i+1}`, i, 9999, [], 0, i + 1);
+        c.isFreeMode = true;
+        this.cups.push(c);
+      }
+      return;
+    }
+
+    const stages = [
+      { ratio: p.bloomRatio || 2, time: 0, label: '悶蒸' },
+      { ratio: p.stage1Ratio, time: p.bloomTime || 30, label: '第一段' },
+      { ratio: p.stage2Ratio, time: (p.bloomTime || 30) + p.stage1Time, label: '第二段' },
+      { ratio: p.stage3Ratio, time: (p.bloomTime || 30) + p.stage1Time + p.stage2Time, label: '第三段' }
+    ];
+    
+    let currentWeight = 0;
+    const finalStages = stages.map(s => {
+      currentWeight += p.powder * s.ratio;
+      return { targetWeight: currentWeight, timeLimit: s.time, label: s.label };
+    });
+
+    const cupCount = p.cupCount;
+    // 間隔時間：以悶蒸時間為基準進行交錯
+    const stagger = (p.bloomTime || 30) / cupCount;
+
+    this.cups = [];
+    for (let i = 0; i < 3; i++) {
+      let isVisible = false;
+      let staggerIndex = 0;
+
+      if (cupCount === 1) {
+          if (i === 1) { isVisible = true; staggerIndex = 0; }
+      } else if (cupCount === 2) {
+          if (i === 0) { isVisible = true; staggerIndex = 0; }
+          if (i === 2) { isVisible = true; staggerIndex = 1; }
+      } else {
+          isVisible = true;
+          staggerIndex = i;
+      }
+
+      if (isVisible) {
+          const cupStages = finalStages.map(s => ({ ...s, timeLimit: s.timeLimit + (staggerIndex * stagger) }));
+          const total = cupStages[cupStages.length - 1].targetWeight;
+          this.cups.push(new Cup(`cup-${i+1}`, i, total, cupStages, staggerIndex * stagger, staggerIndex + 1));
+      } else {
+          this.cups.push(new Cup(`inactive-cup-${i+1}`, i, 0, [], 99999, 0));
+          this.threeScene.updateCup(i, 0, false);
+      }
+    }
+  }
+
+  animate() {
+    this.update();
+    requestAnimationFrame(() => this.animate());
+  }
 
   update() {
     const now = Date.now();
@@ -257,42 +381,67 @@ class Game {
     if (this.state === AppState.MENU) {
       this.pixiScene.render();
     } else if (this.state === AppState.PLAYING) {
-      // 總時間 (同步至 UI)
-      const elapsed = Math.floor((now - this.gameStartTime) / 1000);
+      const elapsed = this.gameStartTime === 0 ? 0 : Math.floor((now - this.gameStartTime) / 1000);
       const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
       const s = (elapsed % 60).toString().padStart(2, '0');
       const timeStr = `${m}:${s}`;
 
-      const worldPos = this.activeScene.get3DPosition(this.mouseX, this.mouseY);
+      const worldPos = this.threeScene.get3DPosition(this.mouseX, this.mouseY);
       const totalWeight = this.cups.reduce((acc, c) => acc + c.currentWeight, 0).toFixed(1);
-      
-      this.activeScene.update3DUI(timeStr, `${totalWeight}g`);
-      this.activeScene.updateKettle(worldPos, this.isPouring);
 
-      const spoutX = this.activeScene.getKettleSpoutX();
+      // 計算推薦沖煮杯數
+      let recommendation = "";
+      const p = this.threeScene.guiParams.calculator;
+      if (p && p.mode === '計算模式') {
+        const needsPour = this.cups.find(c => {
+          const stage = c.stages[c.currentStageIndex];
+          if (!stage) return false;
+          const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
+          return elapsedTotal >= stage.timeLimit && c.currentWeight < stage.targetWeight - 0.5;
+        });
+
+        if (needsPour) {
+          recommendation = `請沖煮第 ${needsPour.displayIndex} 杯`;
+        } else {
+          // 尋找下一個即將開始的杯次
+          const nextStarting = this.cups.find(c => {
+            const stage = c.stages[c.currentStageIndex];
+            if (!stage) return false;
+            const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
+            return elapsedTotal < stage.timeLimit;
+          });
+          if (nextStarting && nextStarting.displayIndex > 0) {
+            const stage = nextStarting.stages[nextStarting.currentStageIndex];
+            const waitTime = Math.max(0, stage.timeLimit - Math.floor((now - this.gameStartTime) / 1000));
+            recommendation = `等待第 ${nextStarting.displayIndex} 杯 (${waitTime}s)`;
+          } else {
+            recommendation = "沖煮流程結束";
+          }
+        }
+      }
+
+      this.threeScene.update3DUI(timeStr, `${totalWeight}g`, recommendation);
+      this.threeScene.updateKettle(worldPos, this.isPouring);
+
+      const spoutWorldPos = this.threeScene.getSpoutWorldPos();
+      const hitCupId = this.threeScene.getHitCup(spoutWorldPos);
 
       this.cups.forEach((cup, i) => {
-        const cupX = this.activeScene.getCupX(i);
-        // 優化判別邏輯：直接依據與手沖壺的水平距離判定，不再受 activeCupIndex 限制
-        // 且碰撞範圍由原本的模糊值改為更精確的 2.0 (單位)
-        const isCurrentlyPouring = this.isPouring && Math.abs(spoutX - cupX) < 2.0; 
-        
+        const isCurrentlyPouring = this.isPouring && (hitCupId === i);
         if (isCurrentlyPouring) {
           cup.pour(this.pourSpeed);
+          if (now % 100 < 20) console.log(`Game: Pouring into Cup ${i}, current weight: ${cup.currentWeight}`);
         }
-        
-        cup.update(now);
-
-        this.activeScene.updateCup(i, cup.currentWeight / cup.targetTotalWeight, isCurrentlyPouring);
+        cup.update(now, this.gameStartTime);
+        this.threeScene.updateCup(i, cup.targetTotalWeight > 0 ? cup.currentWeight / cup.targetTotalWeight : 0, isCurrentlyPouring);
       });
 
       if (this.cups.every(c => c.isFinished)) {
         console.log("Game: All cups finished");
       }
-      this.activeScene.render();
+      // 核心循環：僅更新 3D 場景
+      this.threeScene.render();
     }
-
-    requestAnimationFrame(() => this.update());
   }
 }
 
