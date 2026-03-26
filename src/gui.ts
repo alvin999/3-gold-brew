@@ -106,7 +106,7 @@ export function initGUI(
         container = document.createElement('div');
         container.id = 'tp-gui-container';
         container.style.position = 'fixed';
-        container.style.top = '10px';
+        container.style.top = '80px';
         container.style.right = '10px';
         container.style.zIndex = '200';
         document.body.appendChild(container);

@@ -1,6 +1,7 @@
 import * as PIXI from 'pixi.js';
 import { BrewCalculatorHUD } from './ui/BrewCalculatorHUD';
 import { RecipeStickyNote } from './ui/RecipeStickyNote';
+import { GameMenu } from './ui/GameMenu';
 
 export class PixiScene {
   private app: PIXI.Application;
@@ -8,6 +9,7 @@ export class PixiScene {
   private menuContainer!: PIXI.Container;
   public calculatorHUD!: BrewCalculatorHUD;
   public recipeNote!: RecipeStickyNote;
+  public gameMenu!: GameMenu;
   private menuBG!: PIXI.Graphics;
   private decorations: PIXI.Graphics[] = [];
 
@@ -29,8 +31,10 @@ export class PixiScene {
     this.app.stage.eventMode = 'static';
 
     this.menuContainer = new PIXI.Container();
-    this.menuContainer.sortableChildren = true; // 啟用 zIndex 排序
+    this.menuContainer.sortableChildren = true; 
+    this.menuContainer.zIndex = 10; // 入口選單層級
     this.app.stage.addChild(this.menuContainer);
+    this.app.stage.sortableChildren = true; // 確保 stage 也能根據 zIndex 排序
 
     this.initMenu();
     this.initMenuVisuals();
@@ -38,12 +42,19 @@ export class PixiScene {
     this.initStartButton();
 
     this.calculatorHUD = new BrewCalculatorHUD();
+    this.calculatorHUD.container.zIndex = 100; // 最前層
     this.app.stage.addChild(this.calculatorHUD.container);
     this.calculatorHUD.container.visible = false;
 
     this.recipeNote = new RecipeStickyNote();
+    this.recipeNote.container.zIndex = 50; // 中間層
     this.app.stage.addChild(this.recipeNote.container);
     this.recipeNote.container.visible = false;
+
+    this.gameMenu = new GameMenu();
+    this.gameMenu.container.zIndex = 80; // 高層級，但在 HUD 之下
+    this.app.stage.addChild(this.gameMenu.container);
+    this.gameMenu.container.visible = false;
 
     this.setupEventForwarding();
     this.onWindowResize();
@@ -133,6 +144,10 @@ export class PixiScene {
     if (this.calculatorHUD) {
       this.calculatorHUD.container.x = window.innerWidth / 2;
       this.calculatorHUD.container.y = window.innerHeight / 2;
+    }
+    if (this.gameMenu) {
+      this.gameMenu.container.x = window.innerWidth - 650; 
+      this.gameMenu.container.y = 20;
     }
   }
 

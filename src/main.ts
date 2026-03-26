@@ -200,23 +200,34 @@ class Game {
   }
 
   setupListeners() {
-    const homeBtn = document.getElementById('home-btn');
-    if (homeBtn) homeBtn.addEventListener('click', () => {
-      window.location.reload();
-    });
+    // 註冊 PixiJS 選單事件
+    this.pixiScene.gameMenu.onSettings = () => {
+      const visible = this.pixiScene.toggleCalculator();
+      const toggleCalcBtn = document.getElementById('toggle-calc-btn');
+      if (toggleCalcBtn) toggleCalcBtn.classList.toggle('active', visible);
 
-    const restartBtn = document.getElementById('restart-btn');
-    if (restartBtn) restartBtn.addEventListener('click', () => {
-      this.restartGame();
-    });
-
-    const clearBtn = document.getElementById('clear-cache-btn');
-    if (clearBtn) clearBtn.addEventListener('click', () => {
-      if (confirm("確定要清除所有 Tweakpane 與遊戲本地快取嗎？（會重新載入頁面）")) {
-        localStorage.clear();
-        window.location.reload();
+      // [修正] 如果開啟了設定面板，隱藏 HTML 的啟動蓋板避免擋住 Pixi 交互
+      // 只有在遊戲尚未真正開始 (gameStartTime === 0) 且處於準備階段時才需要處理
+      if (this.state === AppState.PLAYING && this.gameStartTime === 0) {
+        if (visible) {
+          if (this.brewStartOverlay) this.brewStartOverlay.classList.add('hidden');
+        } else {
+          // 關閉面板後，如果還沒開始遊戲，就把蓋板帶回來
+          const p = this.threeScene.guiParams?.calculator;
+          if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
+            if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
+          }
+        }
       }
-    });
+    };
+
+    this.pixiScene.gameMenu.onRestart = () => {
+      this.restartGame();
+    };
+
+    this.pixiScene.gameMenu.onHome = () => {
+      window.location.reload();
+    };
 
     const canvas = this.threeScene.getRendererCanvas();
     if (canvas) {
@@ -311,6 +322,7 @@ class Game {
     document.getElementById('game-hud')!.classList.add('hidden'); 
     document.getElementById('view-selector')!.classList.add('hidden');
     this.pixiScene.showMenu();
+    this.pixiScene.gameMenu.container.visible = false;
     if (this.brewStartOverlay) this.brewStartOverlay.classList.add('hidden');
     this.threeScene.applyCameraPreset('廣角全景'); 
   }
@@ -328,6 +340,7 @@ class Game {
     this.threeScene.show();
     this.threeScene.startGame(); // 切換背景與相機
     this.pixiScene.startGame(); // 隱藏 2D 入口
+    this.pixiScene.gameMenu.container.visible = true;
     
     this.threeScene.applyCameraPreset('職人視角');
     this.applyCalculatorRecipe();
@@ -372,6 +385,8 @@ class Game {
         this.cups.push(c);
       }
       
+      this.pixiScene.gameMenu.setFreeMode(true);
+      
       let cumulativeWeight = 0;
       let cumulativeTime = 0;
       this.cachedRecipeStages = p.stages.map((s: any) => {
@@ -394,8 +409,9 @@ class Game {
       return;
     }
 
-    // 非自由模式，隱藏 2D 小抄
+    // 非自由模式，隱藏 2D 小抄與標籤
     this.pixiScene.setRecipeNoteVisibility(false);
+    this.pixiScene.gameMenu.setFreeMode(false);
 
     const stages = p.stages.map((s: any, idx: number) => {
       let startTime = 0;
@@ -441,6 +457,9 @@ class Game {
           this.threeScene.updateCup(i, 0, false);
       }
     }
+
+    // 更新選單中的自由模式顯示
+    this.pixiScene.gameMenu.setFreeMode(p.mode === '自由模式');
   }
 
   animate() {
