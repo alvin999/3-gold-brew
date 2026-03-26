@@ -27,6 +27,10 @@ class Cup {
   private lastRecordedStageIndex: number = -1;
   private manualStartTime: number | null = null;
 
+  // 視覺動畫專用變數 (不影響電子秤數值)
+  public visualServerWeight: number = 0; // 下壺視覺重量
+  private lastUpdateTime: number = Date.now();
+
   public displayIndex: number; // 使用者看到的杯號 (1-based)
 
   constructor(name: string, index: number, targetTotalWeight: number, stages: any[], delayStart: number, displayIndex: number = 0) {
@@ -42,6 +46,17 @@ class Cup {
   }
 
   update(currentTime: number, gameStartTime: number) {
+    // 計算流體分配動畫 (視覺層)
+    const dt = Math.min(0.1, (currentTime - this.lastUpdateTime) / 1000); 
+    this.lastUpdateTime = currentTime;
+
+    const visualDripperWeight = Math.max(0, this.currentWeight - this.visualServerWeight);
+    if (visualDripperWeight > 0) {
+      // 稍微調高流速至 1.5 (原 1.2)，取得中間平衡
+      const flowOut = 1.5 * Math.sqrt(visualDripperWeight) * dt; 
+      this.visualServerWeight += Math.min(visualDripperWeight, flowOut);
+    }
+
     if (this.isFinished) return;
     
     if (this.mode === '自由模式') {
@@ -454,7 +469,7 @@ class Game {
           this.cups.push(cup);
       } else {
           this.cups.push(new Cup(`inactive-cup-${i+1}`, i, 0, [], 99999, 0));
-          this.threeScene.updateCup(i, 0, false);
+          this.threeScene.updateCup(i, 0, 0, false);
       }
     }
 
@@ -572,7 +587,14 @@ class Game {
           }
         }
 
-        this.threeScene.updateCup(i, cup.targetTotalWeight > 0 ? cup.currentWeight / cup.targetTotalWeight : 0, isCurrentlyPouring, isOverLimit);
+        const visualDripperWeight = Math.max(0, cup.currentWeight - cup.visualServerWeight);
+        // 降低分母 (50 -> 25)，讓水位增加快一點
+        const dRatio = Math.min(1.0, visualDripperWeight / 25);
+        // 下壺比例：若為自由模式，使用固定的 500g 作為滿量參考；否則使用目標總重
+        const referenceWeight = cup.mode === '自由模式' ? 500 : cup.targetTotalWeight;
+        const sRatio = referenceWeight > 0 ? cup.visualServerWeight / referenceWeight : 0;
+
+        this.threeScene.updateCup(i, sRatio, dRatio, isCurrentlyPouring, isOverLimit);
       });
 
       if (this.cups.every(c => c.isFinished)) {

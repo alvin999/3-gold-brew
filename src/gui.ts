@@ -98,6 +98,8 @@ export function initGUI(
     onResetCamera: () => void,
     onCameraChange: (v: any) => void
 ) {
+    if (!import.meta.env.DEV) return;
+    
     console.log("Tweakpane: initGUI started");
 
     // 檢查是否已經存在面板

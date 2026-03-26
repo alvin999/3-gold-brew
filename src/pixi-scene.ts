@@ -56,6 +56,10 @@ export class PixiScene {
     this.app.stage.addChild(this.gameMenu.container);
     this.gameMenu.container.visible = false;
 
+    // 將自由模式標籤獨立加入舞台，以便在畫面中央定位
+    this.gameMenu.freeModeLabel.zIndex = 90; 
+    this.app.stage.addChild(this.gameMenu.freeModeLabel);
+
     this.setupEventForwarding();
     this.onWindowResize();
     window.addEventListener('resize', () => this.onWindowResize());
@@ -146,8 +150,13 @@ export class PixiScene {
       this.calculatorHUD.container.y = window.innerHeight / 2;
     }
     if (this.gameMenu) {
-      this.gameMenu.container.x = window.innerWidth - 650; 
+      // 選單靠右對齊
+      this.gameMenu.container.x = window.innerWidth - 320; 
       this.gameMenu.container.y = 20;
+
+      // 自由模式標籤居中對齊
+      this.gameMenu.freeModeLabel.x = window.innerWidth / 2;
+      this.gameMenu.freeModeLabel.y = 20 + 22; // 調整 y 軸與選單按鈕水平一致
     }
   }
 

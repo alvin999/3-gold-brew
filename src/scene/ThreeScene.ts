@@ -296,12 +296,49 @@ export class ThreeScene {
     dripper.position.y = 3.5; dripper.rotation.y = 0.5; dripper.castShadow = true;
     group.add(dripper);
 
-    // 咖啡豆/液體
-    const liquidGeo = new THREE.CylinderGeometry(1.4, 1.4, 1, 12);
-    const liquidMat = new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.75, metalness: 0.1, flatShading: true });
-    const liquid = new THREE.Mesh(liquidGeo, liquidMat);
-    liquid.name = 'liquid'; liquid.scale.set(0.98, 0.01, 0.98); liquid.position.y = 0.01;
-    group.add(liquid);
+    // 下壺液體 (Server Liquid)
+    // 使用錐台形以匹配下壺 (1.2 -> 1.5) 的造型，避免穿模並填滿底部
+    const serverLiquidGeo = new THREE.CylinderGeometry(1.18, 1.45, 1, 12);
+    // 調亮顏色並顯著加強自發光與光澤，確保在透明壺身內清晰
+    const serverLiquidMat = new THREE.MeshStandardMaterial({ 
+      color: 0x3d2b1f, 
+      roughness: 0.1, 
+      metalness: 0.5, 
+      flatShading: true,
+      emissive: 0x3d2b1f, // 提升自發光基礎顏色
+      emissiveIntensity: 0.6 // 提高自發光強度
+    });
+    const serverLiquid = new THREE.Mesh(serverLiquidGeo, serverLiquidMat);
+    serverLiquid.name = 'serverLiquid'; 
+    serverLiquid.scale.set(1.0, 0.01, 1.0); 
+    serverLiquid.position.y = 0.22; // 提升起始高度至 0.22，確保高於電子秤底座 (0.2)
+    group.add(serverLiquid);
+
+    // 濾杯內部積水 (Dripper Liquid)
+    const dripperLiquidGeo = new THREE.CylinderGeometry(1.4, 0.2, 1.6, 8, 1, false);
+    // 顏色同步調亮，並增加反光感
+    const dripperLiquidMat = new THREE.MeshStandardMaterial({ 
+      color: 0x3d2b1f, 
+      transparent: true, 
+      opacity: 0.9, 
+      roughness: 0.2,
+      metalness: 0.2,
+      side: THREE.DoubleSide
+    });
+    const dripperLiquid = new THREE.Mesh(dripperLiquidGeo, dripperLiquidMat);
+    dripperLiquid.name = 'dripperLiquid';
+    dripperLiquid.position.y = 3.5; 
+    dripperLiquid.scale.set(0.1, 0.01, 0.1); 
+    group.add(dripperLiquid);
+
+    // 滴落水滴/水柱 (Drip Effect)
+    const dripGeo = new THREE.CylinderGeometry(0.05, 0.02, 1, 6);
+    const dripMat = new THREE.MeshStandardMaterial({ color: 0x24140a, transparent: true, opacity: 0.6 });
+    const drip = new THREE.Mesh(dripGeo, dripMat);
+    drip.name = 'drip';
+    drip.position.y = 2.6;
+    drip.visible = false;
+    group.add(drip);
 
     const powderGeo = new THREE.CylinderGeometry(1.3, 0.4, 0.1, 12);
     const powderMat = new THREE.MeshStandardMaterial({ color: 0x5a3820, roughness: 0.75, metalness: 0.1, flatShading: true });
@@ -384,16 +421,54 @@ export class ThreeScene {
   public getKettleSpoutX(): number { return this.getSpoutWorldPos().x; }
   public getCupX(id: number): number { return this.dripperSets[id]?.position.x || 0; }
 
-  public updateCup(id: number, weightRatio: number, isPouring: boolean, isOverLimit: boolean = false) {
+  public updateCup(id: number, serverRatio: number, dripperRatio: number, isPouring: boolean, isOverLimit: boolean = false) {
     const group = this.dripperSets[id]; if (!group) return;
-    const liquid = group.getObjectByName('liquid');
-    if (liquid) {
-      const maxFullHeight = 2.4;
-      // 限制視覺高度，容許過量到 120% 但不再往上長
-      const cappedRatio = Math.min(1.2, weightRatio);
-      const targetScaleY = Math.max(0.01, cappedRatio * maxFullHeight);
-      liquid.scale.y = targetScaleY;
-      liquid.position.y = targetScaleY / 2;
+    
+    // 1. 下壺液位更新
+    const serverLiquid = group.getObjectByName('serverLiquid');
+    if (serverLiquid) {
+      const maxFullHeight = 2.2; // 稍微降低滿壺高度，對應抬升後的空間
+      const cappedRatio = Math.min(1.1, serverRatio);
+      // 降低起步高度至 0.1，因為基礎位置已經抬升
+      const targetScaleY = serverRatio > 0 ? Math.max(0.1, cappedRatio * maxFullHeight) : 0.001;
+      serverLiquid.scale.y = targetScaleY;
+      serverLiquid.position.y = 0.22 + targetScaleY / 2; // 基於新的起始高度 0.22
+      serverLiquid.visible = serverRatio > 0.001;
+    }
+
+    // 2. 濾杯液位更新
+    const dripperLiquid = group.getObjectByName('dripperLiquid');
+    if (dripperLiquid) {
+      const maxDripperHeight = 1.0; 
+      const cappedDRatio = Math.min(1.0, dripperRatio);
+      dripperLiquid.scale.set(0.1 + cappedDRatio * 0.9, cappedDRatio * maxDripperHeight || 0.001, 0.1 + cappedDRatio * 0.9);
+      // 修正起始位置 y=2.6，水位上升時 y 座標隨之移動
+      dripperLiquid.position.y = 2.6 + (cappedDRatio * maxDripperHeight) / 2;
+      dripperLiquid.visible = dripperRatio > 0.01;
+    }
+
+    // 3. 滴落特效更新
+    const drip = group.getObjectByName('drip') as THREE.Mesh;
+    if (drip) {
+      const flowRate = dripperRatio;
+      if (flowRate > 0.05) {
+        drip.visible = true;
+        
+        // 動態計算滴落長度：從濾杯底部 (y=2.6) 延伸到下壺液面高度
+        const serverLiquidTopY = serverRatio > 0 ? (0.22 + (Math.min(1.1, serverRatio) * 2.2)) : 0.22;
+        const dripLength = Math.max(0.1, 2.6 - serverLiquidTopY);
+        
+        drip.scale.y = dripLength;
+        drip.position.set(
+          (Math.random() - 0.5) * 0.03, 
+          2.6 - dripLength / 2, 
+          (Math.random() - 0.5) * 0.03
+        ); 
+        
+        if (drip.material instanceof THREE.Material) drip.material.opacity = 0.4 + flowRate * 0.6;
+      } else {
+        drip.visible = false;
+      }
     }
 
     // 濾杯發光反饋

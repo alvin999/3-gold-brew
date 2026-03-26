@@ -4,7 +4,7 @@ export class GameMenu {
     public container: PIXI.Container;
     private bg: PIXI.Graphics;
     private buttons: PIXI.Container[] = [];
-    private freeModeLabel!: PIXI.Text;
+    public freeModeLabel!: PIXI.Text;
 
     // 事件回調
     public onSettings?: () => void;
@@ -19,62 +19,67 @@ export class GameMenu {
     }
 
     private init() {
-        const btnSpacing = 180;
-        
         // 1. Mode Settings Button
-        const settingsBtn = this.createMenuButton('MODE SETTINGS', 'gear', 0);
+        const settingsBtn = this.createMenuButton('MODE SETTINGS', 'gear', -210);
         settingsBtn.on('pointerup', () => this.onSettings?.());
         
         // 2. Restart Button
-        const restartBtn = this.createMenuButton('RESTART', 'refresh', 210);
+        const restartBtn = this.createMenuButton('RESTART', 'refresh', 0);
         restartBtn.on('pointerup', () => this.onRestart?.());
 
         // 3. Home Button
-        const homeBtn = this.createMenuButton('HOME', 'home', 390);
+        const homeBtn = this.createMenuButton('HOME', 'home', 140);
         homeBtn.on('pointerup', () => this.onHome?.());
 
         this.buttons.push(settingsBtn, restartBtn, homeBtn);
         this.container.addChild(...this.buttons);
 
-        this.freeModeLabel = new PIXI.Text('FREE MODE', {
-            fontFamily: 'Arial, sans-serif',
-            fontSize: 16,
-            fill: '#FFD700', // 金黃色
-            fontWeight: '900'
+        this.freeModeLabel = new PIXI.Text({
+            text: 'FREE BREWING MODE',
+            style: {
+                fontFamily: 'Silkscreen, "Microsoft JhengHei", Arial, sans-serif',
+                fontSize: 16,
+                fill: '#FFD700', // 金黃色
+                fontWeight: '900',
+                dropShadow: {
+                    color: '#000000',
+                    alpha: 0.3,
+                    distance: 2,
+                    blur: 2
+                }
+            }
         });
-        this.freeModeLabel.alpha = 0.9; 
-        this.freeModeLabel.anchor.set(0, 0.5); // 左對齊
-        this.freeModeLabel.y = 15; 
-        this.freeModeLabel.x = -95; // 顯示在背景左側內部
+        this.freeModeLabel.alpha = 1.0; 
+        this.freeModeLabel.anchor.set(0.5, 0.5); // 正居中
         this.freeModeLabel.visible = false;
-        this.container.addChild(this.freeModeLabel);
-
+        // 注意：不加入 this.container，由 PixiScene 管理位置
+        
         this.drawBG();
     }
 
     private drawBG() {
-        const width = 700;
+        const width = 580; // 縮減寬度以適配 3 個按鈕
         const height = 45;
         this.bg.clear();
         
-        // 座標調整：實現左右各 110px 的對稱邊距
-        const bgX = -110; 
+        // 將背景基準點設為中央，實現對稱
+        const bgX = -width / 2; 
         
         // 毛玻璃陰影
-        this.bg.beginFill(0x000000, 0.15);
-        this.bg.drawRoundedRect(bgX + 4, 4, width, height, 12);
+        this.bg.beginFill(0x000000, 0.25);
+        this.bg.drawRoundedRect(bgX + 4, 4, width, height, 15);
         this.bg.endFill();
 
         // 主體
-        this.bg.beginFill(0xFFFFFF, 0.15);
-        this.bg.lineStyle(1, 0xFFFFFF, 0.3);
-        this.bg.drawRoundedRect(bgX, 0, width, height, 12);
+        this.bg.beginFill(0x222222, 0.4); // 稍微加深一點點，增加層次感
+        this.bg.lineStyle(1.5, 0xFFFFFF, 0.2);
+        this.bg.drawRoundedRect(bgX, 0, width, height, 15);
         this.bg.endFill();
 
-        // 加上一點光澤
+        // 加上一點玻璃質感的光澤 (漸層效果的簡化版)
         this.bg.lineStyle(0);
-        this.bg.beginFill(0xFFFFFF, 0.05);
-        this.bg.drawRect(bgX, 0, width, height / 2);
+        this.bg.beginFill(0xFFFFFF, 0.08);
+        this.bg.drawRoundedRect(bgX + 2, 2, width - 4, height / 2.2, 12);
         this.bg.endFill();
 
         this.bg.y = -5;
@@ -92,14 +97,18 @@ export class GameMenu {
         btn.addChild(icon);
 
         // 文字
-        const label = new PIXI.Text(text, {
-            fontFamily: 'Silkscreen',
-            fontSize: 14,
-            fill: '#FFFFFF',
-            fontWeight: 'bold'
+        const label = new PIXI.Text({
+            text: text,
+            style: {
+                fontFamily: 'Silkscreen',
+                fontSize: 14,
+                fill: '#FFFFFF',
+                fontWeight: 'bold'
+            }
         });
         label.x = 25;
-        label.y = 8;
+        label.anchor.set(0, 0.5); // 垂直居中錨點
+        label.y = 15; // 配合圖標中心點 (g.y=10 + drawCenter=5)
         btn.addChild(label);
 
         // 互動效果
