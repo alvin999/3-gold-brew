@@ -22,7 +22,9 @@ class Cup {
   public startTime: number | null = null;
   public delayStart: number = 0; 
   public isFinished: boolean = false;
-  public isFreeMode: boolean = false;
+  public mode: '自由模式' | '練習模式' | '遊戲模式' = '自由模式';
+  public stageErrors: { weightError: number; timeError: number }[] = [];
+  private lastRecordedStageIndex: number = -1;
   private manualStartTime: number | null = null;
 
   public displayIndex: number; // 使用者看到的杯號 (1-based)
@@ -42,7 +44,7 @@ class Cup {
   update(currentTime: number, gameStartTime: number) {
     if (this.isFinished) return;
     
-    if (this.isFreeMode) {
+    if (this.mode === '自由模式') {
       if (!this.manualStartTime) {
         game.threeScene.updateScale(this.index, this.currentWeight, "00:00");
         return;
@@ -74,6 +76,23 @@ class Cup {
       
       const nextStage = this.stages[this.currentStageIndex];
 
+      // 遊戲模式：自動記錄重量誤差 (若時間已到)
+      if (this.mode === '遊戲模式' && gameStartTime > 0) {
+          const elapsedTotal = Math.floor((currentTime - gameStartTime) / 1000);
+          this.stages.forEach((stage, idx) => {
+            const endTime = (idx + 1 < this.stages.length) ? this.stages[idx+1].timeLimit : (stage.timeLimit + 30);
+            if (elapsedTotal >= endTime && this.lastRecordedStageIndex < idx) {
+              const weightError = Math.abs(this.currentWeight - stage.targetWeight);
+              if (!this.stageErrors[idx]) {
+                this.stageErrors[idx] = { weightError: weightError, timeError: 30 };
+              } else {
+                this.stageErrors[idx].weightError = weightError;
+              }
+              this.lastRecordedStageIndex = idx;
+            }
+          });
+      }
+
       if (nextStage) {
         const remainingWeight = Math.max(0, nextStage.targetWeight - this.currentWeight);
         const stageStartTime = nextStage.timeLimit; 
@@ -91,6 +110,9 @@ class Cup {
         instruction = "沖煮完成";
         subText = "享用咖啡";
         if (this.currentWeight >= this.targetTotalWeight - 1) {
+          if (!this.isFinished && this.mode === '遊戲模式') {
+             this.recordFinalStageError();
+          }
           this.isFinished = true;
         }
       }
@@ -103,20 +125,43 @@ class Cup {
   pour(amount: number) {
     if (this.isFinished) return;
     
-    if (this.isFreeMode && !this.manualStartTime) {
+    if (this.mode === '自由模式' && !this.manualStartTime) {
       this.manualStartTime = Date.now();
     }
     
     this.currentWeight += amount;
-    // 移除硬性上限，允許過量以便偵測
-    // if (this.currentWeight > this.targetTotalWeight) {
-    //   this.currentWeight = this.targetTotalWeight;
-    // }
-
+    
     const nextStage = this.stages[this.currentStageIndex];
     if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.1) {
+      if (this.mode === '遊戲模式' && game.gameStartTime > 0) {
+        const now = Date.now();
+        const elapsedTotal = Math.floor((now - game.gameStartTime) / 1000);
+        const targetTime = (this.currentStageIndex + 1 < this.stages.length) ? this.stages[this.currentStageIndex + 1].timeLimit : (nextStage.timeLimit + 30);
+        const timeError = Math.abs(elapsedTotal - targetTime);
+        if (!this.stageErrors[this.currentStageIndex]) {
+          this.stageErrors[this.currentStageIndex] = { weightError: 0, timeError: timeError };
+        } else {
+          this.stageErrors[this.currentStageIndex].timeError = timeError;
+        }
+        console.log(`Game: Stage ${this.currentStageIndex} reached weight. Time Error: ${timeError}s`);
+      }
       this.currentStageIndex++;
     }
+  }
+
+  recordFinalStageError() {
+     // 確保最後一階段也有紀錄
+     const idx = this.stages.length - 1;
+     if (idx >= 0 && this.lastRecordedStageIndex < idx) {
+        const stage = this.stages[idx];
+        const weightError = Math.abs(this.currentWeight - stage.targetWeight);
+        if (!this.stageErrors[idx]) {
+          this.stageErrors[idx] = { weightError: weightError, timeError: 0 };
+        } else {
+          this.stageErrors[idx].weightError = weightError;
+        }
+        this.lastRecordedStageIndex = idx;
+     }
   }
 }
 
@@ -126,6 +171,7 @@ class Game {
   activeCupIndex: number = 1;
   gameStartTime: number = 0;
   isPouring: boolean = false;
+  cachedRecipeStages: any[] = [];
   
   threeScene: ThreeScene;
   pixiScene: PixiScene;
@@ -179,7 +225,7 @@ class Game {
           if (this.state === AppState.PLAYING) {
             // 計算模式下，若尚未點擊 START 開始計時則禁止注水
             const p = this.threeScene.guiParams?.calculator;
-            if (p && p.mode === '計算模式' && this.gameStartTime === 0) {
+            if (p && (p.mode === '練習模式' || p.mode === '遊戲模式') && this.gameStartTime === 0) {
               return;
             }
             this.isPouring = true;
@@ -250,7 +296,7 @@ class Game {
     
     // 重新進入準備啟動狀態
     const p = this.threeScene.guiParams?.calculator;
-    if (p && p.mode === '計算模式') {
+    if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
       if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
     } else {
       this.startSimulation();
@@ -286,9 +332,9 @@ class Game {
     this.threeScene.applyCameraPreset('職人視角');
     this.applyCalculatorRecipe();
 
-    // 只有在計算模式才顯示開始按鈕
+    // 只有在練習或遊戲模式才顯示開始按鈕
     const p = this.threeScene.guiParams?.calculator;
-    if (p && p.mode === '計算模式') {
+    if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
       if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
     } else {
       // 自由模式直接開始計時
@@ -318,15 +364,38 @@ class Game {
     this.threeScene.setDripperCount(p.cupCount || 3);
 
     if (p.mode === '自由模式') {
-      this.threeScene.setDripperCount(p.cupCount || 3, true); // 自由模式根據已選杯數顯示，但隱藏看板
+      this.threeScene.setDripperCount(p.cupCount || 3, true); 
       this.cups = [];
       for (let i = 0; i < 3; i++) {
         const c = new Cup(`free-cup-${i+1}`, i, 9999, [], 0, i + 1);
-        c.isFreeMode = true;
+        c.mode = '自由模式';
         this.cups.push(c);
       }
+      
+      let cumulativeWeight = 0;
+      let cumulativeTime = 0;
+      this.cachedRecipeStages = p.stages.map((s: any) => {
+          cumulativeWeight += p.powder * s.ratio;
+          cumulativeTime += s.time;
+          return {
+              label: s.label,
+              targetWeight: cumulativeWeight,
+              endTime: cumulativeTime
+          };
+      });
+      
+      const totalRatio = p.stages.reduce((acc: number, s: any) => acc + s.ratio, 0);
+      
+      this.pixiScene.setRecipeNoteVisibility(true);
+      this.pixiScene.recipeNote.updateRecipe(p.powder, totalRatio, this.cachedRecipeStages);
+      
+      // 隱藏 3D 看板，改用 2D 小抄
+      this.threeScene.setHUDVisibility(false);
       return;
     }
+
+    // 非自由模式，隱藏 2D 小抄
+    this.pixiScene.setRecipeNoteVisibility(false);
 
     const stages = p.stages.map((s: any, idx: number) => {
       let startTime = 0;
@@ -364,7 +433,9 @@ class Game {
       if (isVisible) {
           const cupStages = finalStages.map((s: any) => ({ ...s, timeLimit: s.timeLimit + (staggerIndex * stagger) }));
           const total = cupStages[cupStages.length - 1].targetWeight;
-          this.cups.push(new Cup(`cup-${i+1}`, i, total, cupStages, staggerIndex * stagger, staggerIndex + 1));
+          const cup = new Cup(`cup-${i+1}`, i, total, cupStages, staggerIndex * stagger, staggerIndex + 1);
+          cup.mode = p.mode;
+          this.cups.push(cup);
       } else {
           this.cups.push(new Cup(`inactive-cup-${i+1}`, i, 0, [], 99999, 0));
           this.threeScene.updateCup(i, 0, false);
@@ -394,7 +465,7 @@ class Game {
       // 計算推薦沖煮杯數
       let recommendation = "";
       const p = this.threeScene.guiParams.calculator;
-      if (p && p.mode === '計算模式') {
+      if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
         const needsPour = this.cups.find(c => {
           const stage = c.stages[c.currentStageIndex];
           if (!stage) return false;
@@ -422,11 +493,31 @@ class Game {
         }
       }
 
-      this.threeScene.update3DUI(timeStr, `${totalWeight}g`, recommendation);
       this.threeScene.updateKettle(worldPos, this.isPouring);
 
       const spoutWorldPos = this.threeScene.getSpoutWorldPos();
       const hitCupId = this.threeScene.getHitCup(spoutWorldPos);
+
+      // 檢查遊戲結束顯示總分
+      if (p && p.mode === '遊戲模式' && this.cups.length > 0 && this.cups.every(c => c.isFinished)) {
+          let totalWeightError = 0;
+          let totalTimeError = 0;
+          this.cups.forEach(c => {
+            c.stageErrors.forEach(err => {
+              if (err) {
+                totalWeightError += err.weightError;
+                totalTimeError += err.timeError;
+              }
+            });
+          });
+          const score = Math.max(0, Math.floor(100 - (totalWeightError * 2.0) - (totalTimeError * 1.0)));
+          this.threeScene.update3DUI(timeStr, `SCORE: ${score}`, "沖煮結束！請品嚐");
+      } else if (p && p.mode !== '自由模式') {
+          this.threeScene.update3DUI(timeStr, `${totalWeight}g`, recommendation);
+      } else if (p && p.mode === '自由模式') {
+          // 自由模式下不再更新 3D 看板的小抄，改用 2D 便利貼
+          // 如果需要顯示即時體重/時間，可以在便利貼中新增
+      }
 
       this.cups.forEach((cup, i) => {
         const isCurrentlyPouring = this.isPouring && (hitCupId === i);
@@ -439,7 +530,7 @@ class Game {
         // 判斷是否過量：若處於計算模式且超過當前應該達到的目標則發紅光
         let isOverLimit = false;
         const p = this.threeScene.guiParams.calculator;
-        if (p && p.mode === '計算模式' && this.gameStartTime > 0) {
+        if (p && (p.mode === '練習模式' || p.mode === '遊戲模式') && this.gameStartTime > 0) {
           const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
           const nextStage = cup.stages[cup.currentStageIndex];
           

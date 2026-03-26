@@ -427,46 +427,148 @@ export class ThreeScene {
 
   private init3DUI() {
     this.uiCanvas = document.createElement('canvas'); 
-    this.uiCanvas.width = 512; 
-    this.uiCanvas.height = 128; 
+    this.uiCanvas.width = 1024; 
+    this.uiCanvas.height = 512; 
     this.uiContext = this.uiCanvas.getContext('2d')!;
     this.uiTexture = new THREE.CanvasTexture(this.uiCanvas);
     
-    const uiGeo = new THREE.PlaneGeometry(3.8, 0.95);
+    const uiGeo = new THREE.PlaneGeometry(4.2, 2.1);
     const uiMat = new THREE.MeshStandardMaterial({
       map: this.uiTexture,
       transparent: true,
       roughness: 1.0,
-      metalness: 0.0,
+      metalness: 0.1,
       emissive: 0x0D47A1,
-      emissiveIntensity: 0.02
+      emissiveIntensity: 0.01
     });
     this.uiSignboard = new THREE.Mesh(uiGeo, uiMat);
     this.uiSignboard.position.set(0, LAYOUT.TIMER.BASE_Y, LAYOUT.TIMER.Z); 
-    this.uiSignboard.visible = false; // 預設隱藏，避免與單杯/多杯看板重疊
+    this.uiSignboard.visible = false; 
     this.scene.add(this.uiSignboard);
+  }
+
+  public setHUDVisibility(visible: boolean) {
+    if (this.uiSignboard) this.uiSignboard.visible = visible;
   }
 
   public update3DUI(time: string, weight: string, guide: string = "") {
     const ctx = this.uiContext; if (!ctx) return;
-    ctx.clearRect(0, 0, 512, 128);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillRect(0, 0, 512, 128);
-    ctx.font = '28px "Silkscreen"';
+    ctx.clearRect(0, 0, 1024, 512);
+
+    // 背景卡片 (Premium Look)
+    this.drawRoundedCard(ctx, 0, 0, 1024, 512, 40, 'rgba(255, 255, 255, 0.9)');
+    
+    ctx.font = '60px "Silkscreen"';
     ctx.fillStyle = '#263238';
     ctx.textAlign = 'center';
     
     if (guide) {
-      ctx.fillText(`${time}  |  ${weight}`, 256, 55);
-      ctx.fillStyle = '#EF6C00'; // 橘色醒目
-      ctx.font = 'bold 36px "Noto Sans TC"';
-      ctx.fillText(guide, 256, 105);
+      ctx.fillText(`${time}  |  ${weight}`, 512, 200);
+      ctx.fillStyle = '#EF6C00'; 
+      ctx.font = 'bold 80px "Noto Sans TC"';
+      ctx.fillText(guide, 512, 350);
     } else {
-      ctx.font = '36px "Silkscreen"';
-      ctx.fillText(`${time}  |  ${weight}`, 256, 80);
+      ctx.font = '80px "Silkscreen"';
+      ctx.fillText(`${time}  |  ${weight}`, 512, 280);
     }
     
     this.uiTexture.needsUpdate = true;
+  }
+
+  public updateRecipeHUD(title: string, subtitle: string, stages: any[], currentTime: string = "", currentWeight: string = "") {
+    const ctx = this.uiContext; if (!ctx) return;
+    ctx.clearRect(0, 0, 1024, 512);
+
+    // 背景玻璃質感 (Premium Look)
+    this.drawRoundedCard(ctx, 0, 0, 1024, 512, 40, 'rgba(255, 255, 255, 0.95)');
+    
+    // 頂部狀態列 (如果是目前的沖煮數據)
+    if (currentTime) {
+        this.drawRoundedCard(ctx, 0, 0, 1024, 100, 40, 'rgba(33, 150, 243, 0.1)');
+        ctx.fillStyle = '#1565C0';
+        ctx.font = 'bold 54px "Silkscreen"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${currentTime}  |  ${currentWeight}`, 512, 70);
+    }
+
+    // 標題區
+    let yBase = currentTime ? 160 : 80;
+    ctx.fillStyle = '#1976D2';
+    ctx.font = 'bold 36px "Noto Sans TC"';
+    ctx.textAlign = 'left';
+    ctx.fillText(title, 50, yBase);
+    
+    ctx.fillStyle = '#546E7A';
+    ctx.font = '28px "Silkscreen"';
+    ctx.textAlign = 'right';
+    ctx.fillText(subtitle, 974, yBase);
+    
+    // 分割線
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+    ctx.moveTo(50, yBase + 30);
+    ctx.lineTo(974, yBase + 30);
+    ctx.stroke();
+
+    // 表頭
+    ctx.fillStyle = '#90A4AE';
+    ctx.font = 'bold 22px "Noto Sans TC"';
+    ctx.textAlign = 'left';
+    ctx.fillText("階段說明", 60, yBase + 70);
+    ctx.textAlign = 'center';
+    ctx.fillText("注水目標 (累計)", 540, yBase + 70);
+    ctx.textAlign = 'right';
+    ctx.fillText("時間點 (總時)", 960, yBase + 70);
+
+    // 階段列表
+    let y = yBase + 130;
+    stages.forEach((s, i) => {
+        // 背景條 (交替顏色)
+        if (i % 2 === 0) {
+            this.drawRoundedCard(ctx, 50, y - 40, 924, 60, 10, 'rgba(0,0,0,0.03)');
+        }
+
+        ctx.fillStyle = '#263238';
+        ctx.font = 'bold 28px "Silkscreen"';
+        ctx.textAlign = 'left';
+        ctx.fillText(`${s.label}`, 60, y);
+
+        ctx.fillStyle = '#1E88E5';
+        ctx.font = 'bold 32px "Silkscreen"';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${Math.floor(s.targetWeight)}g`, 540, y);
+
+        ctx.fillStyle = '#455A64';
+        ctx.font = 'bold 28px "Silkscreen"';
+        ctx.textAlign = 'right';
+        const min = Math.floor(s.endTime / 60).toString().padStart(2, '0');
+        const sec = (s.endTime % 60).toString().padStart(2, '0');
+        ctx.fillText(`${min}:${sec}`, 960, y);
+
+        y += 70;
+    });
+
+    this.uiTexture.needsUpdate = true;
+  }
+
+  private drawRoundedCard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, fill: string) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    // 邊框
+    ctx.strokeStyle = 'rgba(0,0,0,0.05)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
 
   public updateInstruction(id: number, instruction: string, subText: string, isHint: boolean) { 
@@ -581,8 +683,10 @@ export class ThreeScene {
     }
 
     // 僅在計算模式且大於 1 杯時顯示頂部主標籤，避免單杯時與個別看板重疊
-    const isCalcMode = this.guiParams?.calculator?.mode === '計算模式';
-    if (this.uiSignboard) this.uiSignboard.visible = isCalcMode && count > 1;
+    // 僅在非自由模式且大於 1 杯時顯示頂部主標籤，避免單杯時與個別看板重疊
+    const p = this.guiParams?.calculator;
+    const isSpecialMode = p && (p.mode === '練習模式' || p.mode === '遊戲模式');
+    if (this.uiSignboard) this.uiSignboard.visible = (isSpecialMode && count > 1) || (p && p.mode === '自由模式');
   }
 
   public applyCameraPreset(presetName: string) {

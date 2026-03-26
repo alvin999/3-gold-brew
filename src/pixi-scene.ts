@@ -1,11 +1,13 @@
 import * as PIXI from 'pixi.js';
 import { BrewCalculatorHUD } from './ui/BrewCalculatorHUD';
+import { RecipeStickyNote } from './ui/RecipeStickyNote';
 
 export class PixiScene {
   private app: PIXI.Application;
   private container: HTMLElement;
   private menuContainer!: PIXI.Container;
   public calculatorHUD!: BrewCalculatorHUD;
+  public recipeNote!: RecipeStickyNote;
   private menuBG!: PIXI.Graphics;
   private decorations: PIXI.Graphics[] = [];
 
@@ -38,6 +40,10 @@ export class PixiScene {
     this.calculatorHUD = new BrewCalculatorHUD();
     this.app.stage.addChild(this.calculatorHUD.container);
     this.calculatorHUD.container.visible = false;
+
+    this.recipeNote = new RecipeStickyNote();
+    this.app.stage.addChild(this.recipeNote.container);
+    this.recipeNote.container.visible = false;
 
     this.setupEventForwarding();
     this.onWindowResize();
@@ -151,6 +157,10 @@ export class PixiScene {
 
   public show() { this.container.classList.remove('hidden'); this.app.start(); }
   public hide() { this.container.classList.add('hidden'); this.app.stop(); }
+
+  public setRecipeNoteVisibility(visible: boolean) {
+    if (this.recipeNote) this.recipeNote.container.visible = visible;
+  }
 
   public updateScale(_id: number, _weight: number) { }
   public updateInstruction(_id: number, _instruction: string, _subText: string, _isHint: boolean) { }

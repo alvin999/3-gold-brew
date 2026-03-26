@@ -98,10 +98,11 @@ export class BrewCalculatorHUD {
 
     // Mode
     this.createRow(this.mainPanel, 'MODE:', yOffset, (p) => {
-      const freeBtn = this.createSmallBtn('FREE', this.VALUE_X - 45, 0, () => this.setMode('自由模式'), 75);
-      const calcBtn = this.createSmallBtn('CALC', this.VALUE_X + 45, 0, () => this.setMode('計算模式'), 75);
-      p.addChild(freeBtn, calcBtn);
-      this.modeBtns.push(freeBtn, calcBtn);
+      const freeBtn = this.createSmallBtn('FREE', this.VALUE_X - 60, 0, () => this.setMode('自由模式'), 65);
+      const pracBtn = this.createSmallBtn('PRAC', this.VALUE_X, 0, () => this.setMode('練習模式'), 65);
+      const gameBtn = this.createSmallBtn('GAME', this.VALUE_X + 60, 0, () => this.setMode('遊戲模式'), 65);
+      p.addChild(freeBtn, pracBtn, gameBtn);
+      this.modeBtns.push(freeBtn, pracBtn, gameBtn);
     });
 
     yOffset += 60;
@@ -325,7 +326,9 @@ export class BrewCalculatorHUD {
 
   private updateUIHighlight() {
     this.modeBtns.forEach((btn, i) => {
-      const active = (i === 0 && this.calcParams.mode === '自由模式') || (i === 1 && this.calcParams.mode === '計算模式');
+      const active = (i === 0 && this.calcParams.mode === '自由模式') || 
+                     (i === 1 && this.calcParams.mode === '練習模式') ||
+                     (i === 2 && this.calcParams.mode === '遊戲模式');
       this.styleBtn(btn, active);
     });
     this.cupCountBtns.forEach((btn, i) => {

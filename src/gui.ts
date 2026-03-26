@@ -34,7 +34,7 @@ export type GUIValues = {
         preset: string;
     };
     calculator: {
-        mode: '自由模式' | '計算模式';
+        mode: '自由模式' | '練習模式' | '遊戲模式';
         cupCount: number;
         powder: number;
         stages: { label: string; ratio: number; time: number }[];
