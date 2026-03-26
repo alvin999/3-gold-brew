@@ -37,12 +37,7 @@ export type GUIValues = {
         mode: '自由模式' | '計算模式';
         cupCount: number;
         powder: number;
-        stage1Ratio: number;
-        stage1Time: number;
-        stage2Ratio: number;
-        stage2Time: number;
-        stage3Ratio: number;
-        stage3Time: number;
+        stages: { label: string; ratio: number; time: number }[];
     };
 };
 
@@ -83,12 +78,12 @@ export const DEFAULTS: GUIValues = {
         mode: '自由模式',
         cupCount: 1,
         powder: 15,
-        stage1Ratio: 6,
-        stage1Time: 30,
-        stage2Ratio: 5,
-        stage2Time: 90,
-        stage3Ratio: 5,
-        stage3Time: 150
+        stages: [
+            { label: 'BLOOM', ratio: 2, time: 30 },
+            { label: 'STAGE 1', ratio: 6, time: 30 },
+            { label: 'STAGE 2', ratio: 5, time: 30 },
+            { label: 'STAGE 3', ratio: 5, time: 30 }
+        ]
     }
 };
 

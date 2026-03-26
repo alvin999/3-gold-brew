@@ -191,12 +191,15 @@ export class PixiScene {
 
     this.app.canvas.addEventListener('wheel', (e) => {
       if (this.calculatorHUD.container.visible) {
-          const bounds = this.calculatorHUD.container.getBounds();
+          const bounds = this.calculatorHUD.getPanelBounds();
           const rect = this.app.canvas.getBoundingClientRect();
           const mouseX = e.clientX - rect.left;
           const mouseY = e.clientY - rect.top;
-          if (mouseX >= bounds.minX && mouseX <= bounds.maxX && 
-              mouseY >= bounds.minY && mouseY <= bounds.maxY) return;
+          if (mouseX >= bounds.x && mouseX <= bounds.x + bounds.width && 
+              mouseY >= bounds.y && mouseY <= bounds.y + bounds.height) {
+              this.calculatorHUD.handleWheel(e.deltaY);
+              return;
+          }
       }
       const game = (window as any).game;
       if (game && game.threeScene) {

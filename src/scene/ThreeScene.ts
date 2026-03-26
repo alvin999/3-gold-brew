@@ -384,12 +384,14 @@ export class ThreeScene {
   public getKettleSpoutX(): number { return this.getSpoutWorldPos().x; }
   public getCupX(id: number): number { return this.dripperSets[id]?.position.x || 0; }
 
-  public updateCup(id: number, weightRatio: number, isPouring: boolean) {
+  public updateCup(id: number, weightRatio: number, isPouring: boolean, isOverLimit: boolean = false) {
     const group = this.dripperSets[id]; if (!group) return;
     const liquid = group.getObjectByName('liquid');
     if (liquid) {
       const maxFullHeight = 2.4;
-      const targetScaleY = Math.max(0.01, weightRatio * maxFullHeight);
+      // 限制視覺高度，容許過量到 120% 但不再往上長
+      const cappedRatio = Math.min(1.2, weightRatio);
+      const targetScaleY = Math.max(0.01, cappedRatio * maxFullHeight);
       liquid.scale.y = targetScaleY;
       liquid.position.y = targetScaleY / 2;
     }
@@ -399,7 +401,12 @@ export class ThreeScene {
       if ((obj as THREE.Mesh).isMesh && obj.name !== 'liquid' && (obj as THREE.Mesh).material) {
         const mat = (obj as THREE.Mesh).material as THREE.MeshStandardMaterial;
         if (mat.emissive) {
-          if (isPouring) {
+          if (isOverLimit) {
+            // 超量：紅光 (亮紅)
+            mat.emissive.setHex(0xFF1744);
+            mat.emissiveIntensity = 0.4;
+          } else if (isPouring) {
+            // 注水中：原本的溫潤黃光
             mat.emissive.setHex(0xFFE082);
             mat.emissiveIntensity = 0.1;
           } else {

@@ -108,9 +108,10 @@ class Cup {
     }
     
     this.currentWeight += amount;
-    if (this.currentWeight > this.targetTotalWeight) {
-      this.currentWeight = this.targetTotalWeight;
-    }
+    // 移除硬性上限，允許過量以便偵測
+    // if (this.currentWeight > this.targetTotalWeight) {
+    //   this.currentWeight = this.targetTotalWeight;
+    // }
 
     const nextStage = this.stages[this.currentStageIndex];
     if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.1) {
@@ -327,17 +328,18 @@ class Game {
       return;
     }
 
-    const stages = [
-      { ratio: p.bloomRatio || 2, time: 0, label: '悶蒸' },
-      { ratio: p.stage1Ratio, time: p.bloomTime || 30, label: '第一段' },
-      { ratio: p.stage2Ratio, time: (p.bloomTime || 30) + p.stage1Time, label: '第二段' },
-      { ratio: p.stage3Ratio, time: (p.bloomTime || 30) + p.stage1Time + p.stage2Time, label: '第三段' }
-    ];
+    const stages = p.stages.map((s: any, idx: number) => {
+      let startTime = 0;
+      for (let j = 0; j < idx; j++) {
+        startTime += p.stages[j].time;
+      }
+      return { ratio: s.ratio, timeLimit: startTime, label: s.label };
+    });
     
     let currentWeight = 0;
-    const finalStages = stages.map(s => {
+    const finalStages = stages.map((s: any) => {
       currentWeight += p.powder * s.ratio;
-      return { targetWeight: currentWeight, timeLimit: s.time, label: s.label };
+      return { targetWeight: currentWeight, timeLimit: s.timeLimit, label: s.label };
     });
 
     const cupCount = p.cupCount;
@@ -360,7 +362,7 @@ class Game {
       }
 
       if (isVisible) {
-          const cupStages = finalStages.map(s => ({ ...s, timeLimit: s.timeLimit + (staggerIndex * stagger) }));
+          const cupStages = finalStages.map((s: any) => ({ ...s, timeLimit: s.timeLimit + (staggerIndex * stagger) }));
           const total = cupStages[cupStages.length - 1].targetWeight;
           this.cups.push(new Cup(`cup-${i+1}`, i, total, cupStages, staggerIndex * stagger, staggerIndex + 1));
       } else {
@@ -433,7 +435,34 @@ class Game {
           if (now % 100 < 20) console.log(`Game: Pouring into Cup ${i}, current weight: ${cup.currentWeight}`);
         }
         cup.update(now, this.gameStartTime);
-        this.threeScene.updateCup(i, cup.targetTotalWeight > 0 ? cup.currentWeight / cup.targetTotalWeight : 0, isCurrentlyPouring);
+
+        // 判斷是否過量：若處於計算模式且超過當前應該達到的目標則發紅光
+        let isOverLimit = false;
+        const p = this.threeScene.guiParams.calculator;
+        if (p && p.mode === '計算模式' && this.gameStartTime > 0) {
+          const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
+          const nextStage = cup.stages[cup.currentStageIndex];
+          
+          if (nextStage) {
+            if (elapsedTotal < nextStage.timeLimit) {
+              // 處於等待期 (正在等待上一段的水滴乾或悶蒸時間到)
+              // 此時若重量已超過上一段的目標，則為過量
+              if (cup.currentStageIndex > 0) {
+                const prevStage = cup.stages[cup.currentStageIndex - 1];
+                if (cup.currentWeight > prevStage.targetWeight + 1.0) isOverLimit = true;
+              }
+            } else {
+              // 處於目前這一段的注水期
+              // 如果注超過這段的目標，則為過量
+              if (cup.currentWeight > nextStage.targetWeight + 1.0) isOverLimit = true;
+            }
+          } else {
+            // 所有階段已結束，檢查最終總量
+            if (cup.currentWeight > cup.targetTotalWeight + 1.0) isOverLimit = true;
+          }
+        }
+
+        this.threeScene.updateCup(i, cup.targetTotalWeight > 0 ? cup.currentWeight / cup.targetTotalWeight : 0, isCurrentlyPouring, isOverLimit);
       });
 
       if (this.cups.every(c => c.isFinished)) {
