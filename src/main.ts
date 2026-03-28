@@ -29,7 +29,7 @@ class Cup {
 
   // 視覺動畫專用變數 (不影響電子秤數值)
   public visualServerWeight: number = 0; // 下壺視覺重量
-  private lastUpdateTime: number = Date.now();
+  private lastUpdateTime: number = performance.now();
 
   public displayIndex: number; // 使用者看到的杯號 (1-based)
 
@@ -52,8 +52,10 @@ class Cup {
 
     const visualDripperWeight = Math.max(0, this.currentWeight - this.visualServerWeight);
     if (visualDripperWeight > 0) {
-      // 稍微調高流速至 1.5 (原 1.2)，取得中間平衡
-      const flowOut = 1.5 * Math.sqrt(visualDripperWeight) * dt; 
+      // 修復邏輯：排水速率應為固定物理係數 (約 2.5g/s)，不應隨注水速度比例增加
+      // 否則注水 10g/s 排水 15g/s 導致視覺水位永不增加
+      const drainageMultiplier = 2.5;
+      const flowOut = drainageMultiplier * Math.sqrt(visualDripperWeight) * dt; 
       this.visualServerWeight += Math.min(visualDripperWeight, flowOut);
     }
 
@@ -123,8 +125,10 @@ class Cup {
         }
       } else {
         instruction = "沖煮完成";
-        subText = "享用咖啡";
-        if (this.currentWeight >= this.targetTotalWeight - 1) {
+        const lastStageLimit = this.stages[this.stages.length - 1]?.timeLimit || 0;
+        const finalGraceTime = lastStageLimit + 15; // 額外給予 15 秒滴乾/緩衝時間
+
+        if (this.currentWeight >= this.targetTotalWeight - 1 || (this.mode === '遊戲模式' && elapsedTotal > finalGraceTime)) {
           if (!this.isFinished && this.mode === '遊戲模式') {
              this.recordFinalStageError();
           }
@@ -133,7 +137,7 @@ class Cup {
       }
     }
     
-    game.threeScene.updateScale(this.index, this.currentWeight, timeStr);
+    game.threeScene.updateScale(this.index, Number(this.currentWeight.toFixed(2)), timeStr);
     game.threeScene.updateInstruction(this.index, instruction, subText, isHint);
   }
 
@@ -141,24 +145,33 @@ class Cup {
     if (this.isFinished) return;
     
     if (this.mode === '自由模式' && !this.manualStartTime) {
-      this.manualStartTime = Date.now();
+      this.manualStartTime = performance.now();
     }
     
     this.currentWeight += amount;
     
     const nextStage = this.stages[this.currentStageIndex];
-    if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.1) {
+    if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.5) {
       if (this.mode === '遊戲模式' && game.gameStartTime > 0) {
-        const now = Date.now();
+        const now = performance.now();
         const elapsedTotal = Math.floor((now - game.gameStartTime) / 1000);
-        const targetTime = (this.currentStageIndex + 1 < this.stages.length) ? this.stages[this.currentStageIndex + 1].timeLimit : (nextStage.timeLimit + 30);
-        const timeError = Math.abs(elapsedTotal - targetTime);
+        
+        // --- [動態計分核心] ---
+        // 算出該階段「理論上注水需要多久」
+        const prevTargetWeight = (this.currentStageIndex > 0) ? this.stages[this.currentStageIndex - 1].targetWeight : 0;
+        const weightToAdd = nextStage.targetWeight - prevTargetWeight;
+        const expectedDuration = weightToAdd / game.pourSpeed;
+        
+        // 理想完工時間 = 階段開始時間 + 預期注水時長
+        const idealFinishTime = nextStage.timeLimit + expectedDuration;
+        const timeError = Math.abs(elapsedTotal - idealFinishTime);
+        
         if (!this.stageErrors[this.currentStageIndex]) {
           this.stageErrors[this.currentStageIndex] = { weightError: 0, timeError: timeError };
         } else {
           this.stageErrors[this.currentStageIndex].timeError = timeError;
         }
-        console.log(`Game: Stage ${this.currentStageIndex} reached weight. Time Error: ${timeError}s`);
+        console.log(`Game: Stage ${this.currentStageIndex} finished. Ideal: ${idealFinishTime}s, Actual: ${elapsedTotal}s, Error: ${timeError}s`);
       }
       this.currentStageIndex++;
     }
@@ -192,8 +205,8 @@ class Game {
   pixiScene: PixiScene;
   
   activeRenderer: 'three' = 'three'; 
-  public pourSpeed: number = 0.5;
-
+  public pourSpeed: number = 10.0;
+  private lastFrameTime: number = performance.now();
 
   mouseX: number = 0;
   mouseY: number = 0;
@@ -204,6 +217,10 @@ class Game {
   constructor() {
     this.threeScene = new ThreeScene('three-container');
     this.pixiScene = new PixiScene('pixi-container');
+    // 同步初始流速 (避免 Tweakpane 範圍限制導致 Clamping 問題)
+    if (this.threeScene.guiParams) {
+        this.pourSpeed = this.threeScene.guiParams.game.pourSpeed || 10.0;
+    }
     this.init();
   }
 
@@ -374,7 +391,7 @@ class Game {
     if (this.state !== AppState.PLAYING || this.gameStartTime > 0) return;
     
     console.log("Game: startSimulation() called - Timer STARTED");
-    this.gameStartTime = Date.now();
+    this.gameStartTime = performance.now();
     
     if (this.brewStartOverlay) {
        this.brewStartOverlay.classList.add('hidden');
@@ -444,7 +461,8 @@ class Game {
 
     const cupCount = p.cupCount;
     // 間隔時間：以悶蒸時間為基準進行交錯
-    const stagger = (p.bloomTime || 30) / cupCount;
+    const bloomTime = (p.stages && p.stages.length > 0) ? p.stages[0].time : 30;
+    const stagger = bloomTime / cupCount;
 
     this.cups = [];
     for (let i = 0; i < 3; i++) {
@@ -483,7 +501,12 @@ class Game {
   }
 
   update() {
-    const now = Date.now();
+    const now = performance.now();
+    const dt = (now - this.lastFrameTime) / 1000;
+    this.lastFrameTime = now;
+    
+    // 限制最大 dt 避免跳幀造成注水爆炸，並防止負值的出現
+    const safeDt = Math.max(0, Math.min(0.1, dt));
     
     if (this.state === AppState.MENU) {
       this.pixiScene.render();
@@ -494,49 +517,51 @@ class Game {
       const timeStr = `${m}:${s}`;
 
       const worldPos = this.threeScene.get3DPosition(this.mouseX, this.mouseY);
-      const totalWeight = this.cups.reduce((acc, c) => acc + c.currentWeight, 0).toFixed(1);
+      const totalWeight = this.cups.reduce((acc, c) => acc + c.currentWeight, 0).toFixed(2);
 
       // 計算推薦沖煮杯數
       let recommendation = "";
       const p = this.threeScene.guiParams.calculator;
       if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
-        const needsPour = this.cups.find(c => {
-          const stage = c.stages[c.currentStageIndex];
-          if (!stage) return false;
-          const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
-          return elapsedTotal >= stage.timeLimit && c.currentWeight < stage.targetWeight - 0.5;
-        });
+        const elapsedTotal = this.gameStartTime === 0 ? 0 : Math.floor((now - this.gameStartTime) / 1000);
 
-        if (needsPour) {
-          recommendation = `請沖煮第 ${needsPour.displayIndex} 杯`;
+        const needsPour = this.cups
+          .filter(c => c.displayIndex > 0 && c.stages[c.currentStageIndex])
+          .filter(c => elapsedTotal >= c.stages[c.currentStageIndex].timeLimit && c.currentWeight < c.stages[c.currentStageIndex].targetWeight - 0.5)
+          .sort((a, b) => a.stages[a.currentStageIndex].timeLimit - b.stages[b.currentStageIndex].timeLimit);
+
+        if (needsPour.length > 0) {
+          recommendation = `請沖煮第 ${needsPour[0].displayIndex} 杯`;
         } else {
-          // 尋找下一個即將開始的杯次
-          const nextStarting = this.cups.find(c => {
-            const stage = c.stages[c.currentStageIndex];
-            if (!stage) return false;
-            const elapsedTotal = Math.floor((now - this.gameStartTime) / 1000);
-            return elapsedTotal < stage.timeLimit;
-          });
-          if (nextStarting && nextStarting.displayIndex > 0) {
-            const stage = nextStarting.stages[nextStarting.currentStageIndex];
-            const waitTime = Math.max(0, stage.timeLimit - Math.floor((now - this.gameStartTime) / 1000));
-            recommendation = `等待第 ${nextStarting.displayIndex} 杯 (${waitTime}s)`;
+          const nextStarting = this.cups
+            .filter(c => c.displayIndex > 0 && c.stages[c.currentStageIndex])
+            .filter(c => elapsedTotal < c.stages[c.currentStageIndex].timeLimit)
+            .sort((a, b) => a.stages[a.currentStageIndex].timeLimit - b.stages[b.currentStageIndex].timeLimit);
+
+          if (nextStarting.length > 0) {
+            const nextCup = nextStarting[0];
+            const stage = nextCup.stages[nextCup.currentStageIndex];
+            const waitTime = Math.max(0, stage.timeLimit - elapsedTotal);
+            recommendation = `等待第 ${nextCup.displayIndex} 杯 (${waitTime}s)`;
           } else {
             recommendation = "沖煮流程結束";
           }
         }
       }
 
+      // 處理流速與視覺連動 (Hard 模式已移除)
       this.threeScene.updateKettle(worldPos, this.isPouring);
 
       const spoutWorldPos = this.threeScene.getSpoutWorldPos();
       const hitCupId = this.threeScene.getHitCup(spoutWorldPos);
 
       // 檢查遊戲結束顯示總分
-      if (p && p.mode === '遊戲模式' && this.cups.length > 0 && this.cups.every(c => c.isFinished)) {
+      const activeCups = this.cups.filter(c => c.displayIndex > 0);
+      if (p && p.mode === '遊戲模式' && activeCups.length > 0 && activeCups.every(c => c.isFinished)) {
           let totalWeightError = 0;
           let totalTimeError = 0;
-          this.cups.forEach(c => {
+          const activeCups = this.cups.filter(c => c.displayIndex > 0);
+          activeCups.forEach(c => {
             c.stageErrors.forEach(err => {
               if (err) {
                 totalWeightError += err.weightError;
@@ -544,7 +569,12 @@ class Game {
               }
             });
           });
-          const score = Math.max(0, Math.floor(100 - (totalWeightError * 2.0) - (totalTimeError * 1.0)));
+
+          // 改用平均誤差計算，解決多杯模式得分過低的問題
+          const avgWeightError = totalWeightError / activeCups.length;
+          const avgTimeError = totalTimeError / activeCups.length;
+          
+          const score = Math.max(0, Math.floor(100 - (avgWeightError * 1.5) - (avgTimeError * 0.5)));
           this.threeScene.update3DUI(timeStr, `SCORE: ${score}`, "沖煮結束！請品嚐");
       } else if (p && p.mode !== '自由模式') {
           this.threeScene.update3DUI(timeStr, `${totalWeight}g`, recommendation);
@@ -556,8 +586,11 @@ class Game {
       this.cups.forEach((cup, i) => {
         const isCurrentlyPouring = this.isPouring && (hitCupId === i);
         if (isCurrentlyPouring) {
-          cup.pour(this.pourSpeed);
-          if (now % 100 < 20) console.log(`Game: Pouring into Cup ${i}, current weight: ${cup.currentWeight}`);
+          cup.pour(this.pourSpeed * safeDt);
+          // 偵測實際注水速率 (Debug)
+          if (Math.random() < 0.01) {
+             console.log(`Game: Pouring at ${this.pourSpeed} g/s, actual frame increment: ${(this.pourSpeed * safeDt).toFixed(4)}g`);
+          }
         }
         cup.update(now, this.gameStartTime);
 
@@ -570,27 +603,21 @@ class Game {
           
           if (nextStage) {
             if (elapsedTotal < nextStage.timeLimit) {
-              // 處於等待期 (正在等待上一段的水滴乾或悶蒸時間到)
-              // 此時若重量已超過上一段的目標，則為過量
               if (cup.currentStageIndex > 0) {
                 const prevStage = cup.stages[cup.currentStageIndex - 1];
                 if (cup.currentWeight > prevStage.targetWeight + 1.0) isOverLimit = true;
               }
             } else {
-              // 處於目前這一段的注水期
-              // 如果注超過這段的目標，則為過量
               if (cup.currentWeight > nextStage.targetWeight + 1.0) isOverLimit = true;
             }
           } else {
-            // 所有階段已結束，檢查最終總量
             if (cup.currentWeight > cup.targetTotalWeight + 1.0) isOverLimit = true;
           }
         }
 
         const visualDripperWeight = Math.max(0, cup.currentWeight - cup.visualServerWeight);
-        // 降低分母 (50 -> 25)，讓水位增加快一點
-        const dRatio = Math.min(1.0, visualDripperWeight / 25);
-        // 下壺比例：若為自由模式，使用固定的 500g 作為滿量參考；否則使用目標總重
+        // 調高靈敏度：15g 即可填滿視覺上的濾杯空間 (原本為 25g)
+        const dRatio = Math.min(1.0, visualDripperWeight / 15);
         const referenceWeight = cup.mode === '自由模式' ? 500 : cup.targetTotalWeight;
         const sRatio = referenceWeight > 0 ? cup.visualServerWeight / referenceWeight : 0;
 

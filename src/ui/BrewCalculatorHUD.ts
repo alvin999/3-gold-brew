@@ -7,6 +7,7 @@ export class BrewCalculatorHUD {
     mode: '自由模式',
     cupCount: 1,
     powder: 15,
+    flowRate: 10.0,
     stages: [
       { label: 'BLOOM', ratio: 2, time: 30 },
       { label: 'STAGE 1', ratio: 6, time: 30 },
@@ -16,6 +17,7 @@ export class BrewCalculatorHUD {
   };
 
   private powderLabel!: PIXI.Text;
+  private flowLabel!: PIXI.Text;
   private modeBtns: PIXI.Graphics[] = [];
   private cupCountBtns: PIXI.Graphics[] = [];
   private startBrewBtn!: PIXI.Graphics;
@@ -55,7 +57,7 @@ export class BrewCalculatorHUD {
     this.container.on('globalpointermove', (e) => {
         if (!this.isDragging) return;
         const dy = e.global.y - this.lastDragY;
-        this.handleWheel(dy * -2); // 重用 handleWheel 邏輯，dy > 0 是向下轉，所以帶負號
+        this.handleWheel(dy * -2); 
         this.lastDragY = e.global.y;
     });
     window.addEventListener('pointerup', () => this.isDragging = false);
@@ -111,22 +113,42 @@ export class BrewCalculatorHUD {
     this.createRow(this.mainPanel, 'POWDER:', yOffset, (p) => {
       const minus = this.createSmallBtn('-', this.MINUS_X, 0, () => this.updatePowder(-1));
       const plus = this.createSmallBtn('+', this.PLUS_X, 0, () => this.updatePowder(1));
-      this.powderLabel = new PIXI.Text(`${this.calcParams.powder}g`, { fontFamily: 'Silkscreen', fontSize: 18, fill: '#42A5F5', fontWeight: 'bold' });
+      this.powderLabel = new PIXI.Text(`${this.calcParams.powder}`, { fontFamily: 'Silkscreen', fontSize: 18, fill: '#42A5F5', fontWeight: 'bold' });
       this.powderLabel.anchor.set(0.5, 0.5);
       this.powderLabel.x = this.VALUE_X;
       this.powderLabel.interactive = true;
       this.powderLabel.cursor = 'pointer';
-      this.powderLabel.on('pointerover', () => (this.powderLabel.style.fill as string) = '#FF9800');
-      this.powderLabel.on('pointerout', () => (this.powderLabel.style.fill as string) = '#42A5F5');
       this.powderLabel.on('pointerup', (e) => {
           e.stopPropagation();
           this.numpad.show(this.calcParams.powder, (v) => {
               this.calcParams.powder = v;
-              this.powderLabel.text = `${v}g`;
+              this.powderLabel.text = `${v}`;
               this.syncToGame();
           });
       });
       p.addChild(minus, plus, this.powderLabel);
+    });
+
+    yOffset += 60;
+
+    // Pour Flow Rate
+    this.createRow(this.mainPanel, 'POUR FLOW:', yOffset, (p) => {
+        const minus = this.createSmallBtn('-', this.MINUS_X, 0, () => this.updateFlowRate(-0.1));
+        const plus = this.createSmallBtn('+', this.PLUS_X, 0, () => this.updateFlowRate(0.1));
+        this.flowLabel = new PIXI.Text(`${this.calcParams.flowRate.toFixed(1)}`, { fontFamily: 'Silkscreen', fontSize: 18, fill: '#42A5F5', fontWeight: 'bold' });
+        this.flowLabel.anchor.set(0.5, 0.5);
+        this.flowLabel.x = this.VALUE_X;
+        this.flowLabel.interactive = true;
+        this.flowLabel.cursor = 'pointer';
+        this.flowLabel.on('pointerup', (e) => {
+            e.stopPropagation();
+            this.numpad.show(this.calcParams.flowRate, (v) => {
+                this.calcParams.flowRate = Math.max(0.1, Math.min(20.0, v));
+                this.flowLabel.text = `${this.calcParams.flowRate.toFixed(1)}`;
+                this.syncToGame();
+            });
+        });
+        p.addChild(minus, plus, this.flowLabel);
     });
 
     yOffset += 60;
@@ -189,14 +211,11 @@ export class BrewCalculatorHUD {
         internalY += 120;
     });
 
-    // 新增按鈕
     const addBtn = this.createSmallBtn('+ ADD STAGE', 0, internalY + 10, () => this.addStage(), 200);
     addBtn.tint = 0xFF9800;
     this.stageListContent.addChild(addBtn);
 
-    this.contentHeight = internalY + 50; // 近似高度
-
-    // 重新校準滾動邊界 (如果是因為刪除階段導致內容變短)
+    this.contentHeight = internalY + 50;
     this.handleWheel(0);
   }
 
@@ -210,22 +229,19 @@ export class BrewCalculatorHUD {
     title.x = this.LABEL_X;
     group.addChild(title);
 
-    // 刪除按鈕 (除了悶蒸外都可以刪除)
     if (index > 0) {
         const delBtn = this.createSmallBtn('X', this.DELETE_X, 0, () => this.removeStage(index), 30);
         delBtn.tint = 0xF44336;
         group.addChild(delBtn);
     }
 
-    // Ratio Row
     this.createControlRow(group, 35, 'RATIO:', stage.ratio, (val) => `1:${val}`, (d) => {
         stage.ratio = Math.max(1, Math.min(20, stage.ratio + d));
         this.syncToGame();
         this.refreshStageList();
     });
     
-    // Time Row
-    this.createControlRow(group, 75, 'TIME:', stage.time, (val) => `${val}s`, (d) => {
+    this.createControlRow(group, 75, 'TIME:', stage.time, (val) => `${val}`, (d) => {
         stage.time = Math.max(5, Math.min(300, stage.time + d));
         this.syncToGame();
         this.refreshStageList();
@@ -247,8 +263,6 @@ export class BrewCalculatorHUD {
     valText.x = this.VALUE_X;
     valText.interactive = true;
     valText.cursor = 'pointer';
-    valText.on('pointerover', () => (valText.style.fill as string) = '#FF9800');
-    valText.on('pointerout', () => (valText.style.fill as string) = '#42A5F5');
     valText.on('pointerup', (e) => {
         e.stopPropagation();
         this.numpad.show(value, (v) => {
@@ -256,18 +270,13 @@ export class BrewCalculatorHUD {
         });
     });
     row.addChild(valText);
-
     row.addChild(this.createSmallBtn('-', this.MINUS_X, 0, () => onDelta(-delta), 40));
     row.addChild(this.createSmallBtn('+', this.PLUS_X, 0, () => onDelta(delta), 40));
   }
 
   private addStage() {
     const nextIdx = this.calcParams.stages.length;
-    this.calcParams.stages.push({
-        label: `STAGE ${nextIdx}`,
-        ratio: 5,
-        time: 30
-    });
+    this.calcParams.stages.push({ label: `STAGE ${nextIdx}`, ratio: 5, time: 30 });
     this.refreshStageList();
     this.syncToGame();
   }
@@ -275,13 +284,44 @@ export class BrewCalculatorHUD {
   private removeStage(index: number) {
     if (index === 0) return;
     this.calcParams.stages.splice(index, 1);
-    // 重新標記 labels
     this.calcParams.stages.forEach((s: any, i: number) => {
-        if (i === 0) s.label = 'BLOOM';
-        else s.label = `STAGE ${i}`;
+        s.label = i === 0 ? 'BLOOM' : `STAGE ${i}`;
     });
     this.refreshStageList();
     this.syncToGame();
+  }
+
+  private updateFlowRate(delta: number) {
+    this.calcParams.flowRate = Math.max(0.1, Math.min(20.0, this.calcParams.flowRate + delta));
+    if (this.flowLabel) this.flowLabel.text = `${this.calcParams.flowRate.toFixed(1)}`;
+    this.syncToGame();
+  }
+
+  private updatePowder(delta: number) {
+    this.calcParams.powder = Math.max(5, Math.min(50, this.calcParams.powder + delta));
+    if (this.powderLabel) this.powderLabel.text = `${this.calcParams.powder}`;
+    this.syncToGame();
+  }
+
+  private setMode(mode: string) {
+    this.calcParams.mode = mode;
+    this.updateUIHighlight();
+    this.syncToGame();
+  }
+
+  private setCupCount(count: number) {
+    this.calcParams.cupCount = count;
+    this.updateUIHighlight();
+    this.syncToGame();
+  }
+
+  private syncToGame() {
+    const game = (window as any).game;
+    if (game && game.threeScene && game.threeScene.guiParams) {
+        game.threeScene.guiParams.calculator = { ...this.calcParams };
+        game.pourSpeed = this.calcParams.flowRate;
+        game.applyCalculatorRecipe(this.calcParams);
+    }
   }
 
   private createRow(parent: PIXI.Container, label: string, y: number, addContent: (p: PIXI.Container) => void) {
@@ -306,24 +346,6 @@ export class BrewCalculatorHUD {
     return btn;
   }
 
-  private setMode(mode: string) {
-    this.calcParams.mode = mode;
-    this.updateUIHighlight();
-    this.syncToGame();
-  }
-
-  private setCupCount(count: number) {
-    this.calcParams.cupCount = count;
-    this.updateUIHighlight();
-    this.syncToGame();
-  }
-
-  private updatePowder(delta: number) {
-    this.calcParams.powder = Math.max(5, Math.min(50, this.calcParams.powder + delta));
-    this.powderLabel.text = `${this.calcParams.powder}g`;
-    this.syncToGame();
-  }
-
   private updateUIHighlight() {
     this.modeBtns.forEach((btn, i) => {
       const active = (i === 0 && this.calcParams.mode === '自由模式') || 
@@ -337,21 +359,16 @@ export class BrewCalculatorHUD {
   }
 
   private styleBtn(btn: PIXI.Graphics, active: boolean) {
-    const color = active ? (btn === this.startBrewBtn ? 0xFF9800 : 0x42A5F5) : 0x90A4AE;
+    const color = active ? (btn === this.startBrewBtn ? 0x4CAF50 : 0x42A5F5) : 0x90A4AE;
     const text = btn.children[0] as PIXI.Text;
-    const width = btn.getBounds().width; 
-    btn.clear().beginFill(color).drawRoundedRect(-width/2, -15, width, 30, 8).endFill();
+    const width = 45; // 預設小按鈕寬度
+    // 檢查是否是特殊按鈕 (OK or CLOSE)
+    let finalWidth = width;
+    if (btn === this.startBrewBtn) finalWidth = 200;
+    else if (text && text.text === 'CLOSE') finalWidth = 120;
+    else if (text && text.text === '+ ADD STAGE') finalWidth = 200;
+
+    btn.clear().beginFill(color).drawRoundedRect(-finalWidth/2, -15, finalWidth, 30, 8).endFill();
     if (text) text.style.fill = active ? '#FFFFFF' : '#CFD8DC';
   }
-
-  private syncToGame() {
-    const game = (window as any).game;
-    if (game && game.threeScene && game.threeScene.guiParams) {
-      // 轉換資料結構以符合原本的 game.applyCalculatorRecipe (如果原本預期的是這類結構)
-      // 但最好是讓 applyCalculatorRecipe 也支援陣列。
-      Object.assign(game.threeScene.guiParams.calculator, this.calcParams);
-      if (game.applyCalculatorRecipe) game.applyCalculatorRecipe();
-    }
-  }
 }
-

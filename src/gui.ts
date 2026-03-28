@@ -25,6 +25,8 @@ export type GUIValues = {
     game: {
         pourSpeed: number;
         streamRadius: number;
+        splashIntensity: number;
+        streamFlowSpeed: number;
     };
     camera: {
         position: { x: number; y: number; z: number };
@@ -64,8 +66,10 @@ export const DEFAULTS: GUIValues = {
         fogDensity: 0,          // 完全除霧，極致通透
     },
     game: {
-        pourSpeed: 0.5,
-        streamRadius: 0.05,
+        pourSpeed: 10.0,
+        streamRadius: 0.032,
+        splashIntensity: 1.0,
+        streamFlowSpeed: 1.5,
     },
     camera: {
         position: { x: 0, y: 18, z: 12 },
@@ -162,8 +166,10 @@ export function initGUI(
 
     // --- 遊戲配置 ---
     const gameFolder = pane.addFolder({ title: '遊戲配置' });
-    gameFolder.addBinding(params.game, 'pourSpeed', { min: 0, max: 2, label: '倒水速度' }).on('change', () => onGameChange(params.game));
+    gameFolder.addBinding(params.game, 'pourSpeed', { min: 0, max: 20, label: '倒水速度 (基礎)' }).on('change', () => onGameChange(params.game));
     gameFolder.addBinding(params.game, 'streamRadius', { min: 0.01, max: 0.2, label: '水流粗度' }).on('change', () => onGameChange(params.game));
+    gameFolder.addBinding(params.game, 'splashIntensity', { min: 0, max: 2, label: '噴濺強度' }).on('change', () => onGameChange(params.game));
+    gameFolder.addBinding(params.game, 'streamFlowSpeed', { min: 0, max: 5, label: '流動感速度' }).on('change', () => onGameChange(params.game));
 
     // --- 攝影機與視角控制 ---
     const camFolder = pane.addFolder({ title: '攝影機與視角系統' });
