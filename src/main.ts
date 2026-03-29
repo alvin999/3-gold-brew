@@ -1,6 +1,7 @@
 import './style.css'
 import { ThreeScene } from './scene/ThreeScene';
 import { PixiScene } from './pixi-scene'
+import { LAYOUT } from './scene/layout';
 
 const AppState = {
   MENU: 'MENU',
@@ -52,10 +53,11 @@ class Cup {
 
     const visualDripperWeight = Math.max(0, this.currentWeight - this.visualServerWeight);
     if (visualDripperWeight > 0) {
-      // 修復邏輯：排水速率應為固定物理係數 (約 2.5g/s)，不應隨注水速度比例增加
-      // 否則注水 10g/s 排水 15g/s 導致視覺水位永不增加
-      const drainageMultiplier = 2.5;
-      const flowOut = drainageMultiplier * Math.sqrt(visualDripperWeight) * dt; 
+      // 重構公式：以沖煮進度為主，水位高度影響為輔
+      const progress = Math.min(1.0, this.currentWeight / (this.targetTotalWeight || 250));
+      const stageFactor = LAYOUT.PHYSICS.DRAINAGE_BASE * (1.1 - LAYOUT.PHYSICS.CLOGGING_FACTOR * progress);
+      const heightFactor = 1.0 + (Math.pow(visualDripperWeight, LAYOUT.PHYSICS.DRAINAGE_EXP) * LAYOUT.PHYSICS.HEIGHT_INFLUENCE);
+      const flowOut = stageFactor * heightFactor * dt; 
       this.visualServerWeight += Math.min(visualDripperWeight, flowOut);
     }
 
@@ -410,9 +412,13 @@ class Game {
 
     if (p.mode === '自由模式') {
       this.threeScene.setDripperCount(p.cupCount || 3, true); 
+      
+      const totalRatio = p.stages.reduce((acc: number, s: any) => acc + s.ratio, 0);
+      const totalWeight = p.powder * totalRatio;
+
       this.cups = [];
       for (let i = 0; i < 3; i++) {
-        const c = new Cup(`free-cup-${i+1}`, i, 9999, [], 0, i + 1);
+        const c = new Cup(`free-cup-${i+1}`, i, totalWeight || 9999, [], 0, i + 1);
         c.mode = '自由模式';
         this.cups.push(c);
       }
@@ -430,8 +436,6 @@ class Game {
               endTime: cumulativeTime
           };
       });
-      
-      const totalRatio = p.stages.reduce((acc: number, s: any) => acc + s.ratio, 0);
       
       this.pixiScene.setRecipeNoteVisibility(true);
       this.pixiScene.recipeNote.updateRecipe(p.powder, totalRatio, this.cachedRecipeStages);
@@ -616,10 +620,17 @@ class Game {
         }
 
         const visualDripperWeight = Math.max(0, cup.currentWeight - cup.visualServerWeight);
-        // 調高靈敏度：15g 即可填滿視覺上的濾杯空間 (原本為 25g)
-        const dRatio = Math.min(1.0, visualDripperWeight / 15);
-        const referenceWeight = cup.mode === '自由模式' ? 500 : cup.targetTotalWeight;
-        const sRatio = referenceWeight > 0 ? cup.visualServerWeight / referenceWeight : 0;
+        // 使用 LAYOUT 常數控制濾杯視覺比例上限，並引入 MIN_RATIO 防止水位被粉層遮擋
+        const dRatio = visualDripperWeight > 0.1
+            ? LAYOUT.PHYSICS.DRIPPER_VISUAL_MIN_RATIO + (1 - LAYOUT.PHYSICS.DRIPPER_VISUAL_MIN_RATIO) * (visualDripperWeight / LAYOUT.PHYSICS.DRIPPER_VISUAL_CAPACITY)
+            : 0;
+        
+        // 使用目標重量作為下壺水位比例基準，若無目標則使用預設容量
+        const referenceWeight = cup.targetTotalWeight && cup.targetTotalWeight > 0.1 
+            ? cup.targetTotalWeight 
+            : LAYOUT.PHYSICS.SERVER_VISUAL_CAPACITY;
+            
+        const sRatio = cup.visualServerWeight / referenceWeight;
 
         this.threeScene.updateCup(i, sRatio, dRatio, isCurrentlyPouring, isOverLimit);
       });

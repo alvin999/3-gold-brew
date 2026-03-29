@@ -27,7 +27,7 @@ export const LAYOUT = {
   MODEL: {
     SCALE: 0.55,           // 全局器材縮放係數
     DRIPPER_BOTTOM_Y: 2.6, // 濾杯底部 Y 軸 (相對於 group)
-    DRIPPER_MAX_H: 1.6,    // 濾杯積水最大高度
+    DRIPPER_MAX_H: 1.8,    // 濾杯內部液體最大高度 (提升至 1.8 對齊實體模型)
     DRIPPER_TOP_LOCAL_Y: 4.4, // 濾杯頂部世界高度計算基準
     SERVER_BASE_Y: 0.22,   // 下壺液體起始高度
     SERVER_MAX_H: 2.2,     // 下壺水位最大高度
@@ -58,6 +58,15 @@ export const LAYOUT = {
     OPACITY: 0.7,
     GRAVITY: 0.015,
     RESISTANCE: 0.95
+  },
+  PHYSICS: {
+    DRAINAGE_BASE: 1.6,             // 進一步微調 (原 1.8)，讓積水更有感
+    CLOGGING_FACTOR: 1.0,           // 阻塞強度 (0.0~1.0)，越高則後期降速越明顯
+    HEIGHT_INFLUENCE: 0.3,          // 水位高度的輔助權重 (0.0=無影響，1.0=與主體等重)
+    DRAINAGE_EXP: 0.5,              // 水位影響的指數 (0.5 為原本的 sqrt 開根號)
+    SERVER_VISUAL_CAPACITY: 500,    // 下壺視覺參考容量 (g)，作為無明確目標時的備用基準
+    DRIPPER_VISUAL_CAPACITY: 60.0,  // 大幅下修 (原 120)，讓 60g 積水即顯現「滿溢感」
+    DRIPPER_VISUAL_MIN_RATIO: 0.4   // 濾杯起始視覺比例 (對應粉層表面高度)，確保注水即刻可見
   },
   CAMERA: {
     DEFAULT: { pos: { x: 0, y: 20.5, z: 14.5 }, target: { x: 0, y: 9, z: 3 } },
