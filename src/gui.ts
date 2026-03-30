@@ -41,6 +41,10 @@ export type GUIValues = {
         powder: number;
         stages: { label: string; ratio: number; time: number }[];
     };
+    audio: {
+        enabled: boolean;
+        volume: number;
+    };
 };
 
 export const DEFAULTS: GUIValues = {
@@ -88,6 +92,10 @@ export const DEFAULTS: GUIValues = {
             { label: 'STAGE 2', ratio: 5, time: 30 },
             { label: 'STAGE 3', ratio: 5, time: 30 }
         ]
+    },
+    audio: {
+        enabled: true,
+        volume: 0.5
     }
 };
 
@@ -100,7 +108,8 @@ export function initGUI(
     onSceneChange: (v: any) => void,
     onGameChange: (v: any) => void,
     onResetCamera: () => void,
-    onCameraChange: (v: any) => void
+    onCameraChange: (v: any) => void,
+    onAudioChange: (v: any) => void
 ) {
     if (!import.meta.env.DEV) return;
     
@@ -170,6 +179,11 @@ export function initGUI(
     gameFolder.addBinding(params.game, 'streamRadius', { min: 0.01, max: 0.2, label: '水流粗度' }).on('change', () => onGameChange(params.game));
     gameFolder.addBinding(params.game, 'splashIntensity', { min: 0, max: 2, label: '噴濺強度' }).on('change', () => onGameChange(params.game));
     gameFolder.addBinding(params.game, 'streamFlowSpeed', { min: 0, max: 5, label: '流動感速度' }).on('change', () => onGameChange(params.game));
+    
+    // --- 音量與音效 ---
+    const audioFolder = pane.addFolder({ title: '音量與音效' });
+    audioFolder.addBinding(params.audio, 'enabled', { label: '啟用音效' }).on('change', () => onAudioChange(params.audio));
+    audioFolder.addBinding(params.audio, 'volume', { min: 0, max: 1, label: '全域音量' }).on('change', () => onAudioChange(params.audio));
 
     // --- 攝影機與視角控制 ---
     const camFolder = pane.addFolder({ title: '攝影機與視角系統' });

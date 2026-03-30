@@ -14,6 +14,7 @@ import { Kettle } from './components/Kettle';
 import { DripperSet } from './components/DripperSet';
 import { SplashParticles } from './components/SplashParticles';
 import { HUD3D } from './components/HUD3D';
+import { AudioManager } from '../logic/AudioManager';
 
 export class ThreeScene {
   // === [核心 Three.js 物件] ===
@@ -228,7 +229,8 @@ export class ThreeScene {
       (v) => this.updateSceneSettings(v),
       (v) => this.updateGameSettings(v),
       () => this.resetCamera(),
-      (v) => this.updateCamera(v)
+      (v) => this.updateCamera(v),
+      (v) => this.updateAudioSettings(v)
     );
   }
 
@@ -386,6 +388,14 @@ export class ThreeScene {
 
   private updateGameSettings(v: any) {
     if ((window as any).game) (window as any).game.pourSpeed = v.pourSpeed;
+  }
+
+  private updateAudioSettings(v: any) {
+    const manager = AudioManager.getInstance();
+    if (manager) {
+        manager.setVolume(v.volume);
+        manager.setEnabled(v.enabled);
+    }
   }
 
   public setDripperCount(count: number, hideSigns: boolean = false) {

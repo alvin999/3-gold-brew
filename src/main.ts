@@ -1,7 +1,10 @@
 import './style.css'
 import { ThreeScene } from './scene/ThreeScene';
 import { PixiScene } from './pixi-scene'
+import { ResultScreen } from './ui/ResultScreen';
+import { OnboardingGuide } from './ui/OnboardingGuide';
 import { LAYOUT } from './scene/layout';
+import { AudioManager } from './logic/AudioManager';
 
 const AppState = {
   MENU: 'MENU',
@@ -25,7 +28,9 @@ class Cup {
   public isFinished: boolean = false;
   public mode: '自由模式' | '練習模式' | '遊戲模式' = '自由模式';
   public stageErrors: { weightError: number; timeError: number }[] = [];
+  public history: { time: number; weight: number }[] = [];
   private lastRecordedStageIndex: number = -1;
+  private lastHistoryTime: number = 0;
   private manualStartTime: number | null = null;
 
   // 視覺動畫專用變數 (不影響電子秤數值)
@@ -44,6 +49,8 @@ class Cup {
   }
 
   start() {
+    this.history = [{ time: 0, weight: 0 }];
+    this.lastHistoryTime = 0;
   }
 
   update(currentTime: number, gameStartTime: number) {
@@ -128,7 +135,7 @@ class Cup {
       } else {
         instruction = "沖煮完成";
         const lastStageLimit = this.stages[this.stages.length - 1]?.timeLimit || 0;
-        const finalGraceTime = lastStageLimit + 15; // 額外給予 15 秒滴乾/緩衝時間
+        const finalGraceTime = lastStageLimit + 15; // 恢復 15 秒預算
 
         if (this.currentWeight >= this.targetTotalWeight - 1 || (this.mode === '遊戲模式' && elapsedTotal > finalGraceTime)) {
           if (!this.isFinished && this.mode === '遊戲模式') {
@@ -136,6 +143,18 @@ class Cup {
           }
           this.isFinished = true;
         }
+      }
+    }
+
+
+    // 每 0.2 秒紀錄一次歷史數據 (僅在遊戲/練習模式且已開始時)
+    if (gameStartTime > 0 && !this.isFinished) {
+      if (currentTime - this.lastHistoryTime > 200) {
+        this.history.push({ 
+          time: Number(localElapsed), 
+          weight: Number(this.currentWeight.toFixed(2)) 
+        });
+        this.lastHistoryTime = currentTime;
       }
     }
     
@@ -154,6 +173,9 @@ class Cup {
     
     const nextStage = this.stages[this.currentStageIndex];
     if (nextStage && this.currentWeight >= nextStage.targetWeight - 0.5) {
+      // 播放目標達成音效
+      AudioManager.getInstance().playBeep(880, 0.15);
+      
       if (this.mode === '遊戲模式' && game.gameStartTime > 0) {
         const now = performance.now();
         const elapsedTotal = Math.floor((now - game.gameStartTime) / 1000);
@@ -202,9 +224,12 @@ class Game {
   gameStartTime: number = 0;
   isPouring: boolean = false;
   cachedRecipeStages: any[] = [];
+  private jinglePlayed: boolean = false;
   
   threeScene: ThreeScene;
   pixiScene: PixiScene;
+  resultScreen: ResultScreen;
+  onboardingGuide: OnboardingGuide;
   
   activeRenderer: 'three' = 'three'; 
   public pourSpeed: number = 10.0;
@@ -219,6 +244,9 @@ class Game {
   constructor() {
     this.threeScene = new ThreeScene('three-container');
     this.pixiScene = new PixiScene('pixi-container');
+    this.resultScreen = new ResultScreen();
+    this.onboardingGuide = new OnboardingGuide();
+    
     // 同步初始流速 (避免 Tweakpane 範圍限制導致 Clamping 問題)
     if (this.threeScene.guiParams) {
         this.pourSpeed = this.threeScene.guiParams.game.pourSpeed || 10.0;
@@ -228,9 +256,17 @@ class Game {
 
   async init() {
     await this.pixiScene.init();
+    
+    this.resultScreen.onRetry = () => {
+      this.restartGame();
+    };
+
     this.setupListeners();
     this.showMenu();
     this.animate();
+
+    // 啟動新手導覽（如果是首次進入）
+    this.onboardingGuide.start();
   }
 
   setupListeners() {
@@ -257,6 +293,10 @@ class Game {
 
     this.pixiScene.gameMenu.onRestart = () => {
       this.restartGame();
+    };
+
+    this.pixiScene.helpButton.onClick = () => {
+      this.onboardingGuide.start(true); // 強制開啟
     };
 
     this.pixiScene.gameMenu.onHome = () => {
@@ -326,29 +366,12 @@ class Game {
     this.brewStartBtn = document.getElementById('brew-start-btn');
     if (this.brewStartBtn) {
       this.brewStartBtn.addEventListener('click', () => {
+        AudioManager.getInstance().resume();
         this.startSimulation();
       });
     }
   }
 
-  restartGame() {
-    console.log("Game: restartGame() called - Resetting session in-place");
-    this.gameStartTime = 0;
-    this.isPouring = false;
-    
-    // 重新套用配方，這會重設所有杯子的狀態
-    this.applyCalculatorRecipe();
-    
-    // 重新進入準備啟動狀態
-    const p = this.threeScene.guiParams?.calculator;
-    if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
-      if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
-    } else {
-      this.startSimulation();
-    }
-    
-    this.threeScene.update3DUI("00:00", "0.0g", "準備開始");
-  }
   showMenu() {
     this.state = AppState.MENU;
     document.getElementById('pixi-container')!.classList.remove('hidden');
@@ -374,7 +397,11 @@ class Game {
     this.threeScene.show();
     this.threeScene.startGame(); // 切換背景與相機
     this.pixiScene.startGame(); // 隱藏 2D 入口
-    this.pixiScene.gameMenu.container.visible = true;
+    
+    // 確保音效 Context 已啟動
+    AudioManager.getInstance().init();
+
+    this.pixiScene.setUIVisibility(true);
     
     this.threeScene.applyCameraPreset('職人視角');
     this.applyCalculatorRecipe();
@@ -399,7 +426,9 @@ class Game {
        this.brewStartOverlay.classList.add('hidden');
     }
     
-    // 這裡可以播放啟動音效或是開始引導
+    // 播放啟動音效
+    AudioManager.getInstance().playStartSound();
+
     this.threeScene.updateInstruction(1, "START!", "開始沖煮", true);
   }
 
@@ -580,6 +609,19 @@ class Game {
           
           const score = Math.max(0, Math.floor(100 - (avgWeightError * 1.5) - (avgTimeError * 0.5)));
           this.threeScene.update3DUI(timeStr, `SCORE: ${score}`, "沖煮結束！請品嚐");
+          
+          if (!this.jinglePlayed) {
+              AudioManager.getInstance().playSuccessJingle();
+              this.jinglePlayed = true;
+              
+              // 延遲 2 秒後顯示結算畫面
+              setTimeout(() => {
+                if (this.state === AppState.PLAYING) {
+                   this.resultScreen.show(this.cups);
+                   console.log("Game: Triggering Result Screen with Chart.js");
+                }
+              }, 2000);
+          }
       } else if (p && p.mode !== '自由模式') {
           this.threeScene.update3DUI(timeStr, `${totalWeight}g`, recommendation);
       } else if (p && p.mode === '自由模式') {
@@ -591,12 +633,14 @@ class Game {
         const isCurrentlyPouring = this.isPouring && (hitCupId === i);
         if (isCurrentlyPouring) {
           cup.pour(this.pourSpeed * safeDt);
-          // 偵測實際注水速率 (Debug)
-          if (Math.random() < 0.01) {
-             console.log(`Game: Pouring at ${this.pourSpeed} g/s, actual frame increment: ${(this.pourSpeed * safeDt).toFixed(4)}g`);
-          }
         }
         cup.update(now, this.gameStartTime);
+        
+        // 更新全局注水音效 (僅針對當前有效杯子且正在注水時)
+        if (isCurrentlyPouring) {
+            // 根據注水速度動態調整濾波頻率與音量
+            AudioManager.getInstance().updatePouring(true, this.pourSpeed / 30.0);
+        }
 
         // 判斷是否過量：若處於計算模式且超過當前應該達到的目標則發紅光
         let isOverLimit = false;
@@ -638,8 +682,37 @@ class Game {
       if (this.cups.every(c => c.isFinished)) {
         console.log("Game: All cups finished");
       }
+      // 渲染後更新注水音效狀態 (若本幀完全沒注水則逐漸靜音)
+      if (!this.isPouring) {
+          AudioManager.getInstance().updatePouring(false);
+      }
+
       // 核心循環：僅更新 3D 場景
       this.threeScene.render();
+    }
+  }
+
+  restartGame() {
+    console.log("Game: Restarting simulation in current mode...");
+    this.state = AppState.PLAYING;
+    this.gameStartTime = 0;
+    this.jinglePlayed = false;
+    this.cups = [];
+    
+    this.resultScreen.hide();
+
+    // 重新套用當前設定並重建杯子
+    this.applyCalculatorRecipe();
+
+    // 重置 3D UI
+    this.threeScene.update3DUI("00:00", "0.0g", "準備中");
+    
+    // 根據模式決定是否顯示 3D 啟動按鈕
+    const p = this.threeScene.guiParams?.calculator;
+    if (p && (p.mode === '練習模式' || p.mode === '遊戲模式')) {
+      if (this.brewStartOverlay) this.brewStartOverlay.classList.remove('hidden');
+    } else {
+      this.startSimulation();
     }
   }
 }

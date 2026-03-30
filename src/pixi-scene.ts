@@ -2,6 +2,8 @@ import * as PIXI from 'pixi.js';
 import { BrewCalculatorHUD } from './ui/BrewCalculatorHUD';
 import { RecipeStickyNote } from './ui/RecipeStickyNote';
 import { GameMenu } from './ui/GameMenu';
+import { AudioToggle } from './ui/AudioToggle';
+import { HelpButton } from './ui/HelpButton';
 
 export class PixiScene {
   private app: PIXI.Application;
@@ -10,6 +12,8 @@ export class PixiScene {
   public calculatorHUD!: BrewCalculatorHUD;
   public recipeNote!: RecipeStickyNote;
   public gameMenu!: GameMenu;
+  public audioToggle!: AudioToggle;
+  public helpButton!: HelpButton;
   private menuBG!: PIXI.Graphics;
   private decorations: PIXI.Graphics[] = [];
 
@@ -31,7 +35,7 @@ export class PixiScene {
     this.app.stage.eventMode = 'static';
 
     this.menuContainer = new PIXI.Container();
-    this.menuContainer.sortableChildren = true; 
+    this.menuContainer.sortableChildren = true;
     this.menuContainer.zIndex = 10; // 入口選單層級
     this.app.stage.addChild(this.menuContainer);
     this.app.stage.sortableChildren = true; // 確保 stage 也能根據 zIndex 排序
@@ -57,8 +61,18 @@ export class PixiScene {
     this.gameMenu.container.visible = false;
 
     // 將自由模式標籤獨立加入舞台，以便在畫面中央定位
-    this.gameMenu.freeModeLabel.zIndex = 90; 
+    this.gameMenu.freeModeLabel.zIndex = 90;
     this.app.stage.addChild(this.gameMenu.freeModeLabel);
+
+    this.audioToggle = new AudioToggle();
+    this.audioToggle.container.zIndex = 150;
+    this.app.stage.addChild(this.audioToggle.container);
+    this.audioToggle.container.visible = false;
+
+    this.helpButton = new HelpButton();
+    this.helpButton.container.zIndex = 150;
+    this.app.stage.addChild(this.helpButton.container);
+    this.helpButton.container.visible = false;
 
     this.setupEventForwarding();
     this.onWindowResize();
@@ -71,11 +85,11 @@ export class PixiScene {
     this.menuContainer.addChildAt(decoLayer, 1);
 
     for (let i = 0; i < 12; i++) {
-        const g = new PIXI.Graphics().beginFill(colors[Math.floor(Math.random() * colors.length)], 0.8).drawRect(-15, -15, 30, 30).endFill();
-        g.x = (Math.random() - 0.5) * window.innerWidth;
-        g.y = (Math.random() - 0.5) * 400 - 100;
-        decoLayer.addChild(g);
-        this.decorations.push(g);
+      const g = new PIXI.Graphics().beginFill(colors[Math.floor(Math.random() * colors.length)], 0.8).drawRect(-15, -15, 30, 30).endFill();
+      g.x = (Math.random() - 0.5) * window.innerWidth;
+      g.y = (Math.random() - 0.5) * 400 - 100;
+      decoLayer.addChild(g);
+      this.decorations.push(g);
     }
   }
 
@@ -100,11 +114,11 @@ export class PixiScene {
     btn.interactive = true; btn.cursor = 'pointer';
     btn.on('pointerdown', (e) => { e.stopPropagation(); });
     btn.on('pointerup', (e) => {
-        e.stopPropagation();
-        const game = (window as any).game;
-        if (game) game.startGame();
+      e.stopPropagation();
+      const game = (window as any).game;
+      if (game) game.startGame();
     });
-    btn.y = 200; 
+    btn.y = 200;
     btn.zIndex = 100; // 確保位於最前層，遮住背景濾杯組
     this.menuContainer.addChild(btn);
   }
@@ -113,8 +127,8 @@ export class PixiScene {
     const counter = new PIXI.Graphics().beginFill(0xF5F5F5).drawRect(-600, 150, 1200, 100).endFill();
     this.menuContainer.addChild(counter);
     for (let i = 0; i < 3; i++) {
-        const xPos = (i - 1) * 250;
-        this.createStaticDripperSet(xPos, 150);
+      const xPos = (i - 1) * 250;
+      this.createStaticDripperSet(xPos, 150);
     }
 
     const kettle = new PIXI.Container();
@@ -151,12 +165,24 @@ export class PixiScene {
     }
     if (this.gameMenu) {
       // 選單靠右對齊
-      this.gameMenu.container.x = window.innerWidth - 320; 
+      this.gameMenu.container.x = window.innerWidth - 320;
       this.gameMenu.container.y = 20;
 
       // 自由模式標籤居中對齊
       this.gameMenu.freeModeLabel.x = window.innerWidth / 2;
-      this.gameMenu.freeModeLabel.y = 20 + 22; // 調整 y 軸與選單按鈕水平一致
+      this.gameMenu.freeModeLabel.y = 20 + 22;
+    }
+
+    if (this.audioToggle) {
+      // 放置在 Menu 的左邊約 60px
+      this.audioToggle.container.x = window.innerWidth - 635;
+      this.audioToggle.container.y = 20 + 22;
+    }
+
+    if (this.helpButton) {
+      // 放置在 AudioToggle 的左邊約 50px
+      this.helpButton.container.x = window.innerWidth - 685;
+      this.helpButton.container.y = 20 + 22;
     }
   }
 
@@ -172,6 +198,8 @@ export class PixiScene {
 
   public startGame() {
     this.menuContainer.visible = false;
+    this.audioToggle.container.visible = true;
+    this.helpButton.container.visible = true;
   }
 
   public toggleCalculator() {
@@ -188,16 +216,19 @@ export class PixiScene {
 
   public updateScale(_id: number, _weight: number) { }
   public updateInstruction(_id: number, _instruction: string, _subText: string, _isHint: boolean) { }
-  public setUIVisibility(_visible: boolean) { }
+  public setUIVisibility(visible: boolean) {
+    if (this.gameMenu) this.gameMenu.container.visible = visible;
+    if (this.audioToggle) this.audioToggle.container.visible = visible;
+  }
   public updateCup(_id: number, _ratio: number, _wet: boolean) { }
   public updateKettle(_pos: any, _isPouring: boolean) { }
 
   private setupEventForwarding() {
     this.app.stage.on('pointerdown', (e) => {
       if (this.calculatorHUD.container.visible) {
-          const bounds = this.calculatorHUD.container.getBounds();
-          if (e.client.x >= bounds.minX && e.client.x <= bounds.maxX && 
-              e.client.y >= bounds.minY && e.client.y <= bounds.maxY) return;
+        const bounds = this.calculatorHUD.container.getBounds();
+        if (e.client.x >= bounds.minX && e.client.x <= bounds.maxX &&
+          e.client.y >= bounds.minY && e.client.y <= bounds.maxY) return;
       }
       if (e.target !== this.app.stage) return;
       const game = (window as any).game;
@@ -216,7 +247,7 @@ export class PixiScene {
       const game = (window as any).game;
       if (game && game.threeScene) {
         const canvas = game.threeScene.getRendererCanvas();
-        canvas.dispatchEvent(new PointerEvent('pointerup', { 
+        canvas.dispatchEvent(new PointerEvent('pointerup', {
           bubbles: true, cancelable: true,
           button: e.button, pointerId: e.pointerId, pointerType: e.pointerType
         }));
@@ -225,15 +256,15 @@ export class PixiScene {
 
     this.app.canvas.addEventListener('wheel', (e) => {
       if (this.calculatorHUD.container.visible) {
-          const bounds = this.calculatorHUD.getPanelBounds();
-          const rect = this.app.canvas.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-          if (mouseX >= bounds.x && mouseX <= bounds.x + bounds.width && 
-              mouseY >= bounds.y && mouseY <= bounds.y + bounds.height) {
-              this.calculatorHUD.handleWheel(e.deltaY);
-              return;
-          }
+        const bounds = this.calculatorHUD.getPanelBounds();
+        const rect = this.app.canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        if (mouseX >= bounds.x && mouseX <= bounds.x + bounds.width &&
+          mouseY >= bounds.y && mouseY <= bounds.y + bounds.height) {
+          this.calculatorHUD.handleWheel(e.deltaY);
+          return;
+        }
       }
       const game = (window as any).game;
       if (game && game.threeScene) {
