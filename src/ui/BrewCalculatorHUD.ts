@@ -241,7 +241,7 @@ export class BrewCalculatorHUD {
         this.refreshStageList();
     });
     
-    this.createControlRow(group, 75, 'TIME:', stage.time, (val) => `${val}`, (d) => {
+    this.createControlRow(group, 75, 'TIME:', stage.time, (val) => `${Math.round(val)}`, (d) => {
         stage.time = Math.max(5, Math.min(300, stage.time + d));
         this.syncToGame();
         this.refreshStageList();

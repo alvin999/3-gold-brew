@@ -148,7 +148,7 @@ export class RecipeStickyNote {
             weight.x = 125; weight.y = y;
 
             const m = Math.floor(s.endTime / 60).toString().padStart(2, '0');
-            const sec = (s.endTime % 60).toString().padStart(2, '0');
+            const sec = Math.floor(s.endTime % 60).toString().padStart(2, '0');
             const time = new PIXI.Text(`${m}:${sec}`, { fontFamily: 'Silkscreen', fontSize: 20, fill: '#455A64' });
             time.x = 300; time.y = y;
 

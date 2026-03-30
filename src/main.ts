@@ -87,7 +87,7 @@ class Cup {
     const localElapsed = Math.max(0, elapsedTotal - this.delayStart);
     
     const m = Math.floor(localElapsed / 60).toString().padStart(2, '0');
-    const s = (localElapsed % 60).toString().padStart(2, '0');
+    const s = Math.floor(localElapsed % 60).toString().padStart(2, '0');
     const timeStr = `${m}:${s}`;
 
     let instruction = "準備中";
@@ -96,7 +96,7 @@ class Cup {
 
     if (elapsedTotal < this.delayStart) {
       instruction = "準備中...";
-      subText = `預計 ${this.delayStart}s 開始`;
+      subText = `預計 ${Math.round(this.delayStart)}s 開始`;
     } else {
       if (!this.startTime) this.startTime = currentTime;
       
@@ -127,7 +127,7 @@ class Cup {
         
         if (elapsedTotal < stageStartTime) {
           instruction = `等待中 (${nextStage.label})`;
-          subText = `剩餘 ${stageStartTime - elapsedTotal}s`;
+          subText = `剩餘 ${Math.round(stageStartTime - elapsedTotal)}s`;
         } else {
           subText = `剩餘 ${Math.floor(remainingWeight)}g`;
           isHint = remainingWeight > 0.5;
@@ -575,7 +575,7 @@ class Game {
             const nextCup = nextStarting[0];
             const stage = nextCup.stages[nextCup.currentStageIndex];
             const waitTime = Math.max(0, stage.timeLimit - elapsedTotal);
-            recommendation = `等待第 ${nextCup.displayIndex} 杯 (${waitTime}s)`;
+            recommendation = `等待第 ${nextCup.displayIndex} 杯 (${Math.round(waitTime)}s)`;
           } else {
             recommendation = "沖煮流程結束";
           }
