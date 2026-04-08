@@ -24,10 +24,11 @@ export class PixiScene {
 
   public async init() {
     await this.app.init({
-      resizeTo: window,
+      resizeTo: this.container,
+      autoDensity: true,
       backgroundAlpha: 0, // 核心！畫布主體透明，以便露出下方的 3D
       antialias: true,
-      resolution: window.devicePixelRatio || 1,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
     });
     this.container.appendChild(this.app.canvas as any);
 
